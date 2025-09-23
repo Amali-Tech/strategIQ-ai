@@ -1,0 +1,204 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.env
+.env*
+*.egg-info/
+*.egg
+*.sqlite3
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+python
+python/*
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+.env/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and distribution
+build/
+dist/
+*.zip
+*.tar.gz
+*.whl
+*.deb
+*.rpm
+
+# AWS
+.aws-sam/
+.aws/
+*.log
+samconfig.toml
+packaged-template.yaml
+.aws-lambda-builders/
+
+# AWS Lambda
+*.zip
+lambda-*.zip
+layer-*.zip
+deployment-package.zip
+
+# Terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfbackend
+**/*.tfvars
+**/backend.tf
+**/providers.tf
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+test-results/
+.nyc_output
+
+# Lambda layer
+lambda_layer.zip
+layer.zip
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Misc
+*.bak
+*.tmp
+*.swp
+*~
+.#*
+\#*#
+*.orig
+*.rej
+
+# Secret files
+secrets.json
+config.json
+credentials.json
+
+# MacOS
+*.dmg
+
+# Windows
+*.exe
+*.msi
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Local development
+local/
+temp/
+tmp/
+
