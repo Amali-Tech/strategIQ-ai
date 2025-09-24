@@ -1,0 +1,15 @@
+# Example Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+
+# AWS Configuration
+aws_region = "eu-west-2"
+
+# Project Configuration
+project_name = "aws-ai-hackathon"
+environment  = "dev"
+
+# API Keys (Required)
+youtube_api_key = "YOUR_YOUTUBE_API_KEY_HERE"
+
+# AI/ML Configuration
+bedrock_model_id = "amazon.nova-pro-v1:0"

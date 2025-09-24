@@ -1,4 +1,4 @@
-# Iam Module Outputs
+# IAM Module Outputs
 
 output "lambda_image_analysis_role_arn" {
   description = "ARN of the Lambda image analysis execution role"

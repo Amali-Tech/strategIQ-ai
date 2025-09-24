@@ -283,7 +283,7 @@ resource "aws_iam_policy" "eventbridge_pipes_policy" {
         Action = [
           "lambda:InvokeFunction"
         ]
-        Resource = var.lambda_function_arns
+        Resource = "arn:aws:lambda:*:*:function:${var.project_name}-${var.environment}-*"
       }
     ]
   })

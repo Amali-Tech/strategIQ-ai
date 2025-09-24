@@ -1,17 +1,31 @@
-# project name
-variable "project_name" {
-    type = string
-    description = "The name of this project"
-}
+# Root Variables
 
-# default aws region
 variable "aws_region" {
-    type = string
-    description = "The region in which these resources would be created."
+  description = "AWS region for resources"
+  type        = string
+  default     = "eu-west-2"
 }
 
-# environment
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
+  default     = "aws-ai-hackathon"
+}
+
 variable "environment" {
-    type = string
-    description = "could be one of development, production or staging or any other name"
+  description = "Environment (dev, staging, prod)"
+  type        = string
+  default     = "dev"
+}
+
+variable "youtube_api_key" {
+  description = "YouTube Data API key for video enrichment"
+  type        = string
+  sensitive   = true
+}
+
+variable "bedrock_model_id" {
+  description = "Bedrock model ID for campaign generation"
+  type        = string
+  default     = "amazon.nova-pro-v1:0"
 }

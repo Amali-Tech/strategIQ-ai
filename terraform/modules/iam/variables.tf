@@ -1,6 +1,4 @@
-# Iam Module Variables
-
-# TODO: Add module-specific variables here
+# IAM Module Variables
 
 variable "project_name" {
   description = "Name of the project"
@@ -35,7 +33,7 @@ variable "sqs_queue_arns" {
 variable "lambda_function_arns" {
   description = "List of Lambda function ARNs"
   type        = list(string)
-  default     = ["*"]  # Will be updated after Lambda functions are created
+  default     = ["*"]
 }
 
 variable "tags" {
