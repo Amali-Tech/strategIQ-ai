@@ -21,9 +21,7 @@ variable "get_status_lambda_invoke_arn" {
 }
 
 variable "tags" {
-  description = "Tags to apply to resources"
+  description = "A map of tags to assign to the resources"
   type        = map(string)
   default     = {}
 }
-
-# TODO: Add module-specific variables here

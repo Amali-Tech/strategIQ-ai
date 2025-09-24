@@ -40,7 +40,10 @@ resource "aws_s3_bucket_policy" "product_images_public_read" {
         Sid       = "PublicReadGetObject"
         Effect    = "Allow"
         Principal = "*"
-        Action    = "s3:GetObject"
+        Action    = [
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ]
         Resource  = "${aws_s3_bucket.product_images.arn}/*"
       }
     ]
@@ -74,8 +77,8 @@ resource "aws_s3_bucket_cors_configuration" "product_images" {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
     allowed_origins = ["*"]
-    expose_headers  = ["ETag"]
-    max_age_seconds = 3000
+    expose_headers  = ["ETag", "x-amz-version-id"]
+    max_age_seconds = 86400
   }
 }
 

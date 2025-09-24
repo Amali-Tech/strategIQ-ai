@@ -5,7 +5,14 @@ import uuid
 import base64
 import hashlib
 
-s3 = boto3.client("s3")
+# Use regional S3 client to avoid redirects
+s3 = boto3.client(
+    "s3", 
+    region_name=os.environ.get("AWS_REGION", "eu-west-2"),
+    config=boto3.session.Config(
+        s3={'addressing_style': 'virtual'}
+    )
+)
 BUCKET = os.environ.get("BUCKET_NAME")
 
 def generate_image_hash(object_key):
@@ -54,8 +61,21 @@ def lambda_handler(event, context):
     presigned_url = s3.generate_presigned_url(
         "put_object",
         Params=presigned_params,
-        ExpiresIn=3600,
+        ExpiresIn=3600
     )
+    
+    # Prepare the headers that must be sent with the PUT request
+    required_headers = {
+        "Content-Type": filetype
+    }
+    
+    # Add metadata headers if they exist
+    if product_details:
+        required_headers["x-amz-meta-product-details"] = product_details
+    if product_category:
+        required_headers["x-amz-meta-product-category"] = product_category
+    if platform:
+        required_headers["x-amz-meta-platform"] = platform
     
     return {
         "statusCode": 200,
@@ -63,6 +83,7 @@ def lambda_handler(event, context):
         "body": json.dumps({
             "uploadUrl": presigned_url,
             "imageHash": image_hash,
-            "metadata": metadata
+            "metadata": metadata,
+            "requiredHeaders": required_headers
         }),
     }

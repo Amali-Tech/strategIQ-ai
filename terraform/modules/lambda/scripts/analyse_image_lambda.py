@@ -85,7 +85,7 @@ class ProductImageAnalyzer:
                     }
                 },
                 MaxLabels=20,
-                MinConfidence=70
+                MinConfidence=50
             )
             logger.info(f"Labels detected: {len(labels_response.get('Labels', []))}")
             
@@ -116,7 +116,7 @@ class ProductImageAnalyzer:
                             'Name': object_key
                         }
                     },
-                    MinConfidence=70
+                    MinConfidence=50
                 )
                 logger.info(f"Moderation labels: {len(moderation_response.get('ModerationLabels', []))}")
             except Exception as mod_error:
