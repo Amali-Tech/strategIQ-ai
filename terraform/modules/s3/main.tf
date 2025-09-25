@@ -45,7 +45,16 @@ resource "aws_s3_bucket_policy" "product_images_public_read" {
           "s3:GetObjectVersion"
         ]
         Resource  = "${aws_s3_bucket.product_images.arn}/*"
-      }
+      },
+      {
+      "Sid": "AllowRekognitionAccess",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "rekognition.amazonaws.com"
+      },
+      "Action": "s3:GetObject",
+      "Resource": "${aws_s3_bucket.product_images.arn}/*"
+    }
     ]
   })
 }

@@ -93,8 +93,7 @@ resource "aws_iam_policy" "s3_access_policy" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:GeneratePresignedUrl"
+          "s3:DeleteObject"
         ]
         Resource = "${var.s3_bucket_arn}/*"
       },
@@ -104,7 +103,26 @@ resource "aws_iam_policy" "s3_access_policy" {
           "s3:ListBucket"
         ]
         Resource = var.s3_bucket_arn
-      }
+      },
+      {
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:DetectLabels",
+        "rekognition:DetectText",
+        "rekognition:DetectModerationLabels"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": "${var.s3_bucket_arn}/*"
+    }
     ]
   })
 
