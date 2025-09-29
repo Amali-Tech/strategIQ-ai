@@ -4,11 +4,11 @@
 # S3 Bucket for storing product images
 resource "aws_s3_bucket" "product_images" {
   bucket = "${var.project_name}-${var.environment}-product-images-${random_string.bucket_suffix.result}"
-
   tags = merge(var.tags, {
     Name = "${var.project_name}-${var.environment}-product-images"
     Purpose = "Store product images for analysis and processing"
   })
+  force_destroy = true
 }
 
 # Random string for unique bucket naming
@@ -28,7 +28,7 @@ resource "aws_s3_bucket_public_access_block" "product_images" {
   restrict_public_buckets = false
 }
 
-# S3 Bucket Policy - Allow public read access
+# S3 Bucket Policy - Allow public read access and Rekognition access
 resource "aws_s3_bucket_policy" "product_images_public_read" {
   bucket = aws_s3_bucket.product_images.id
   depends_on = [aws_s3_bucket_public_access_block.product_images]
@@ -47,14 +47,28 @@ resource "aws_s3_bucket_policy" "product_images_public_read" {
         Resource  = "${aws_s3_bucket.product_images.arn}/*"
       },
       {
-      "Sid": "AllowRekognitionAccess",
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "rekognition.amazonaws.com"
-      },
-      "Action": "s3:GetObject",
-      "Resource": "${aws_s3_bucket.product_images.arn}/*"
-    }
+        Sid = "AllowRekognitionAccess"
+        Effect = "Allow"
+        Principal = {
+          Service = "rekognition.amazonaws.com"
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectAcl",
+          "s3:GetObjectTagging",
+          "s3:GetObjectVersion",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "${aws_s3_bucket.product_images.arn}/*",
+          "${aws_s3_bucket.product_images.arn}"
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      }
     ]
   })
 }
@@ -90,6 +104,9 @@ resource "aws_s3_bucket_cors_configuration" "product_images" {
     max_age_seconds = 86400
   }
 }
+
+# Data source for current AWS account ID
+data "aws_caller_identity" "current" {}
 
 # S3 Bucket Lifecycle Configuration
 # resource "aws_s3_bucket_lifecycle_configuration" "product_images" {

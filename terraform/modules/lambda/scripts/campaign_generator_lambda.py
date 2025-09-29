@@ -97,7 +97,7 @@ def generate_campaign_with_bedrock(prompt, model_id=BEDROCK_MODEL_ID, max_tokens
                         "role": "user",
                         "content": [
                             {
-                                "text": prompt  # Removed "type" field that was causing validation errors
+                                "text": prompt
                             }
                         ]
                     }
@@ -165,6 +165,7 @@ def generate_campaign_with_bedrock(prompt, model_id=BEDROCK_MODEL_ID, max_tokens
             return f"Failed to parse JSON response: {response_text[:500]}"
         
         print(f"Received response from Bedrock model: {model_id}")
+        print("response from bedrock: ", response_body)
         
         if 'amazon.nova-pro' in model_id:
             # Parse Nova Pro response format

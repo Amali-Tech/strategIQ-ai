@@ -1,32 +1,37 @@
 # Lambda Module
 # This module manages lambda resources for the AWS AI Hackathon project
 
-# Create ZIP file for Lambda layer from python dependencies
-data "archive_file" "lambda_layer" {
-  type        = "zip"
-  source_dir  = "${path.root}/../python"
-  output_path = "${path.root}/../lambda_layer.zip"
+# Create the proper directory structure for the lambda layer using local-exec
+resource "null_resource" "create_layer_structure" {
+  triggers = {
+    # Trigger recreation when python directory contents change
+    python_hash = sha256(join("", [for f in fileset("${path.root}/../python", "**") : filesha256("${path.root}/../python/${f}")]))
+  }
   
-  # Exclude unnecessary files
-  excludes = [
-    "**/__pycache__/**",
-    "**/*.pyc",
-    "**/.pytest_cache/**",
-    "**/tests/**",
-    "**/.DS_Store"
-  ]
+  provisioner "local-exec" {
+    command = <<-EOT
+      cd "${path.root}/.."
+      rm -f lambda_layer.zip
+      zip -r lambda_layer.zip python/ \
+        -x "python/**/__pycache__/**" \
+           "python/**/*.pyc" \
+           "python/**/.pytest_cache/**" \
+           "python/**/tests/**" \
+           "python/**/.DS_Store"
+    EOT
+  }
 }
 
 # Lambda Layer for shared dependencies
 resource "aws_lambda_layer_version" "shared_dependencies" {
-  filename            = data.archive_file.lambda_layer.output_path
+  filename            = "${path.root}/../lambda_layer.zip"
   layer_name          = "${var.project_name}-${var.environment}-shared-dependencies"
-  source_code_hash    = data.archive_file.lambda_layer.output_base64sha256
+  source_code_hash    = null_resource.create_layer_structure.triggers.python_hash
   
   compatible_runtimes = ["python3.11", "python3.12"]
   description         = "Shared dependencies for all Lambda functions"
   
-  depends_on = [data.archive_file.lambda_layer]
+  depends_on = [null_resource.create_layer_structure]
 }
 
 # Create ZIP files for each Lambda function

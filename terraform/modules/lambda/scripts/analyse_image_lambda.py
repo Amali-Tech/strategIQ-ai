@@ -23,7 +23,7 @@ except Exception as e:
     raise
 
 class ProductImageAnalyzer:
-    def __init__(self, region_name='us-east-1'):
+    def __init__(self, region_name='eu-west-2'):
         """Initialize AWS clients"""
         try:
             logger.info(f"Initializing ProductImageAnalyzer with region: {region_name}")
@@ -85,7 +85,7 @@ class ProductImageAnalyzer:
                     }
                 },
                 MaxLabels=20,
-                MinConfidence=50
+                MinConfidence=70
             )
             logger.info(f"Labels detected: {len(labels_response.get('Labels', []))}")
             
@@ -116,7 +116,7 @@ class ProductImageAnalyzer:
                             'Name': object_key
                         }
                     },
-                    MinConfidence=50
+                    MinConfidence=70
                 )
                 logger.info(f"Moderation labels: {len(moderation_response.get('ModerationLabels', []))}")
             except Exception as mod_error:

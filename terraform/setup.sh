@@ -32,7 +32,7 @@ if [ ! -f "setup.env" ]; then
     log_info "Please create a setup.env file with the following variables:"
     cat << 'EOF'
 # AWS Configuration
-AWS_REGION=us-east-1
+AWS_REGION=eu-west-2
 AWS_PROFILE=default
 
 # Project Configuration

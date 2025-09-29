@@ -5,7 +5,13 @@ import uuid
 import base64
 import hashlib
 
-s3 = boto3.client("s3")
+s3 = boto3.client(
+    "s3", 
+    region_name="eu-west-2",
+    config=boto3.session.Config(
+        s3={"addressing_style": "virtual"}
+    )
+)
 BUCKET = os.environ.get("BUCKET_NAME")
 
 def generate_image_hash(object_key):
@@ -32,28 +38,14 @@ def lambda_handler(event, context):
     object_key = f"uploads/{uuid.uuid4()}-{filename}"
     image_hash = generate_image_hash(object_key)
     
-    # Add metadata to the S3 object
-    metadata = {}
-    if product_details:
-        metadata['product-details'] = product_details
-    if product_category:
-        metadata['product-category'] = product_category
-    if platform:
-        metadata['platform'] = platform
-    
-    presigned_params = {
-        "Bucket": BUCKET,
-        "Key": object_key,
-        "ContentType": filetype
-    }
-    
-    # Add metadata to presigned URL if any exists
-    if metadata:
-        presigned_params["Metadata"] = metadata
-    
+    # Generate simple presigned URL for PUT request
     presigned_url = s3.generate_presigned_url(
         "put_object",
-        Params=presigned_params,
+        Params={
+            "Bucket": BUCKET,
+            "Key": object_key,
+            "ContentType": filetype
+        },
         ExpiresIn=3600,
     )
     
@@ -62,7 +54,6 @@ def lambda_handler(event, context):
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps({
             "uploadUrl": presigned_url,
-            "imageHash": image_hash,
-            "metadata": metadata
+            "imageHash": image_hash
         }),
     }

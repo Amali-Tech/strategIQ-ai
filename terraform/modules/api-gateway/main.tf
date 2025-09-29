@@ -73,3 +73,9 @@ resource "aws_apigatewayv2_route" "get_status_function" {
   route_key = "GET /status/{imageHash}"
   target    = "integrations/${aws_apigatewayv2_integration.get_status_function.id}"
 }
+
+resource "aws_apigatewayv2_route" "get_campaign_function" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /campaign/{imageHash}"
+  target    = "integrations/${aws_apigatewayv2_integration.get_status_function.id}"
+}

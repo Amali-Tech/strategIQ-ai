@@ -105,24 +105,15 @@ resource "aws_iam_policy" "s3_access_policy" {
         Resource = var.s3_bucket_arn
       },
       {
-      "Effect": "Allow",
-      "Action": [
-        "rekognition:DetectLabels",
-        "rekognition:DetectText",
-        "rekognition:DetectModerationLabels"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectAcl",
-        "s3:GetObjectTagging",
-        "s3:GetObjectVersion"
-      ],
-      "Resource": "${var.s3_bucket_arn}/*"
-    }
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectAcl",
+          "s3:GetObjectTagging",
+          "s3:GetObjectVersion"
+        ]
+        Resource = "${var.s3_bucket_arn}/*"
+      }
     ]
   })
 
@@ -146,7 +137,8 @@ resource "aws_iam_policy" "dynamodb_access_policy" {
           "dynamodb:Query",
           "dynamodb:Scan",
           "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem"
+          "dynamodb:BatchWriteItem",
+          "dynamodb:DescribeTable"
         ]
         Resource = var.dynamodb_table_arns
       },
@@ -159,6 +151,13 @@ resource "aws_iam_policy" "dynamodb_access_policy" {
           "dynamodb:ListStreams"
         ]
         Resource = var.dynamodb_stream_arns
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:*",
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -182,6 +181,18 @@ resource "aws_iam_policy" "rekognition_access_policy" {
           "rekognition:RecognizeCelebrities"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "${var.s3_bucket_arn}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       }
     ]
   })
@@ -377,4 +388,7 @@ resource "aws_iam_role_policy_attachment" "eventbridge_pipes_policy_attachment" 
   role       = aws_iam_role.eventbridge_pipes_role.name
   policy_arn = aws_iam_policy.eventbridge_pipes_policy.arn
 }
+
+# Data source for current AWS account ID
+data "aws_caller_identity" "current" {}
 

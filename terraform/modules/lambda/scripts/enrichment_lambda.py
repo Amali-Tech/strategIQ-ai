@@ -274,17 +274,33 @@ def lambda_handler(event, context):
             if len(event['Records']) > 0:
                 print(f"First record eventName: {event['Records'][0].get('eventName')}")
                 print(f"DynamoDB data keys: {list(event['Records'][0]['dynamodb'].keys() if 'dynamodb' in event['Records'][0] else [])}")
+        elif isinstance(event, list) and len(event) > 0:
+            print(f"Event is an array with {len(event)} items")
+            if 'eventName' in event[0]:
+                print(f"First item eventName: {event[0].get('eventName')}")
+                print(f"DynamoDB data keys: {list(event[0]['dynamodb'].keys() if 'dynamodb' in event[0] else [])}")
         
         # For EventBridge Pipe, we need to extract the DynamoDB record
         # The structure depends on how the Pipe is configured
-        if 'Records' in event and len(event['Records']) > 0:
+        if isinstance(event, list) and len(event) > 0:
+            # EventBridge Pipes format - event is an array of DynamoDB stream records
+            # Each item in the array is a DynamoDB stream record
+            if 'dynamodb' in event[0]:
+                record = event[0]['dynamodb']
+                print("Processing EventBridge Pipes array format")
+            else:
+                print("Unexpected event format: Array item has no dynamodb data")
+                return {"error": "Invalid event format", "pipeline_status": "failed"}
+        elif 'Records' in event and len(event['Records']) > 0:
             # Standard DynamoDB Stream format - Lambda test console and standard DynamoDB streams
             record = event['Records'][0]['dynamodb']
+            print("Processing standard DynamoDB stream format")
         elif 'detail' in event:
             # EventBridge Rule format
             dynamodb_event = event['detail']
             if 'dynamodb' in dynamodb_event:
                 record = dynamodb_event['dynamodb']
+                print("Processing EventBridge Rule format")
             else:
                 print("Unexpected event format: No dynamodb data in detail")
                 return {"error": "Invalid event format", "pipeline_status": "failed"}
@@ -292,11 +308,15 @@ def lambda_handler(event, context):
             # Direct pipe format with potentially multiple records - lowercase 'records'
             # For simplicity, we'll process just the first record
             record = event['records'][0]['dynamodb']
+            print("Processing lowercase records format")
         elif 'dynamodb' in event:
             # Direct DynamoDB stream format
             record = event['dynamodb']
+            print("Processing direct DynamoDB format")
         else:
             print("Unexpected event format")
+            print(f"Event keys: {list(event.keys()) if isinstance(event, dict) else 'Not a dict'}")
+            print(f"Event type: {type(event)}")
             return {"error": "Invalid event format", "pipeline_status": "failed"}
             
         # Extract data from the DynamoDB record (NewImage from the stream)
@@ -330,10 +350,12 @@ def lambda_handler(event, context):
                 
             # Build search query based on product attributes and categories
             search_query = build_search_query(product_attributes, product_categories)
+            print("ssearch query: ", search_query)
             
             # Search for relevant YouTube videos
             try:
                 youtube_results = search_youtube_videos(search_query, max_results=5)
+                print("youtube results: ", youtube_results)
                 if not youtube_results and YOUTUBE_API_KEY:
                     print("WARNING: YouTube search returned no results")
             except Exception as e:

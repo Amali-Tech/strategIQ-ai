@@ -290,11 +290,11 @@ Example output:
 
 ```json
 {
-  "upload": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/upload",
-  "presigned_url": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/presigned-url",
-  "status": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/status/{imageHash}",
-  "campaigns": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/campaigns",
-  "health": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/health",
-  "analytics": "https://abc123.execute-api.us-east-1.amazonaws.com/dev/analytics"
+  "upload": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/upload",
+  "presigned_url": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/presigned-url",
+  "status": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/status/{imageHash}",
+  "campaigns": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/campaigns",
+  "health": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/health",
+  "analytics": "https://abc123.execute-api.eu-west-2.amazonaws.com/dev/analytics"
 }
 ```
