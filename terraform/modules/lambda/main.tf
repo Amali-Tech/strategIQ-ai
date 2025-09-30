@@ -214,6 +214,20 @@ resource "aws_s3_bucket_notification" "image_upload" {
     filter_suffix      = ".png"
   }
 
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.analyze_image.arn
+    events             = ["s3:ObjectCreated:*"]
+    filter_prefix      = "uploads/"
+    filter_suffix      = ".jfif"
+  }
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.analyze_image.arn
+    events             = ["s3:ObjectCreated:*"]
+    filter_prefix      = "uploads/"
+    filter_suffix      = ".webp"
+  }
+
   depends_on = [aws_lambda_permission.s3_invoke_analyze_image]
 }
 
