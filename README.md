@@ -179,7 +179,7 @@ cp terraform/setup.env.example terraform/setup.env
 
 # Edit with your values
 export YOUTUBE_API_KEY=your_youtube_api_key_here
-export AWS_REGION=eu-west-2
+export AWS_REGION=eu-west-1
 export PROJECT_NAME=aws-ai-hackathon
 export ENVIRONMENT=dev
 ```

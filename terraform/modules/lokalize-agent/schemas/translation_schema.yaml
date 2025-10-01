@@ -1,0 +1,74 @@
+openapi: 3.0.0
+info:
+  title: Translation Services API
+  description: Translate marketing content while preserving intent
+  version: 1.0.0
+paths:
+  /translate-marketing-content:
+    post:
+      summary: Translate marketing content with cultural context
+      description: Translates content while preserving marketing intent and cultural adaptations
+      operationId: translateMarketingContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+                - target_language
+              properties:
+                content:
+                  type: string
+                  description: Content to translate
+                target_language:
+                  type: string
+                  description: Target language code (e.g., ja, de, es)
+                source_language:
+                  type: string
+                  description: Source language code (e.g., en)
+                  default: en
+                content_type:
+                  type: string
+                  enum: [marketing_copy, headline, tagline, cta, description]
+                  description: Type of marketing content
+                  default: marketing_copy
+                brand_terms:
+                  type: array
+                  items:
+                    type: string
+                  description: Brand terms that should not be translated
+      responses:
+        '200':
+          description: Translation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  translated_content:
+                    type: string
+                    description: Translated content
+                  translation_notes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        original_phrase:
+                          type: string
+                        translated_phrase:
+                          type: string
+                        note:
+                          type: string
+                  cultural_adaptations:
+                    type: array
+                    items:
+                      type: string
+                  quality_score:
+                    type: number
+                    description: Translation quality score (1-10)
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error

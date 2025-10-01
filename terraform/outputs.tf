@@ -56,3 +56,15 @@ output "lambda_functions" {
     get_status         = "aws-ai-hackathon-dev-get-status"
   }
 }
+
+# Lokalize Agent outputs
+output "lokalize_agent" {
+  description = "Lokalize Agent information"
+  value = {
+    agent_id       = module.lokalize_agent.agent_id
+    agent_arn      = module.lokalize_agent.agent_arn
+    agent_alias_id = module.lokalize_agent.agent_alias_id
+    agent_alias_arn = module.lokalize_agent.agent_alias_arn
+    lambda_functions = module.lokalize_agent.lambda_functions
+  }
+}

@@ -26,6 +26,11 @@ variable "lambda_api_role_arn" {
   type        = string
 }
 
+variable "lambda_sentiment_role_arn" {
+  description = "ARN of the Lambda sentiment analysis execution role"
+  type        = string
+}
+
 # Resource names from other modules
 variable "s3_bucket_name" {
   description = "Name of the S3 bucket for images"
@@ -39,6 +44,11 @@ variable "product_analysis_table_name" {
 
 variable "enriched_data_table_name" {
   description = "Name of the enriched data DynamoDB table"
+  type        = string
+}
+
+variable "comments_table_name" {
+  description = "Name of the comments DynamoDB table for sentiment analysis"
   type        = string
 }
 

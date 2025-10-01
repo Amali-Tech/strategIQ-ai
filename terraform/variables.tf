@@ -1,9 +1,15 @@
 # Root Variables
 
 variable "aws_region" {
-  description = "AWS region for resources"
+  description = "AWS region"
   type        = string
-  default     = "eu-west-2"
+  default     = "eu-west-1"
+}
+
+variable "aws_profile" {
+  description = "AWS profile to use"
+  type        = string
+  default     = "sandbox-034"
 }
 
 variable "project_name" {
@@ -28,4 +34,10 @@ variable "bedrock_model_id" {
   description = "Bedrock model ID for campaign generation"
   type        = string
   default     = "amazon.nova-pro-v1:0"
+}
+
+variable "knowledge_base_id" {
+  description = "Bedrock Knowledge Base ID for cultural intelligence"
+  type        = string
+  default     = "7TBCBTCE2X"  # Empty string means no knowledge base
 }

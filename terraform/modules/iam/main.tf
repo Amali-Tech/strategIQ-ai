@@ -1,9 +1,16 @@
 # IAM Module
 # This module manages IAM resources for the AWS AI Hackathon project
 
+# Random suffix for IAM resources to avoid conflicts
+resource "random_string" "iam_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
 # Lambda Execution Role for Image Analysis Functions
 resource "aws_iam_role" "lambda_image_analysis_role" {
-  name = "${var.project_name}-${var.environment}-lambda-image-analysis-role"
+  name = "${var.project_name}-${var.environment}-lambda-image-analysis-role-${random_string.iam_suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -23,7 +30,7 @@ resource "aws_iam_role" "lambda_image_analysis_role" {
 
 # Lambda Execution Role for Campaign Generation Functions
 resource "aws_iam_role" "lambda_campaign_role" {
-  name = "${var.project_name}-${var.environment}-lambda-campaign-role"
+  name = "${var.project_name}-${var.environment}-lambda-campaign-role-${random_string.iam_suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -43,7 +50,47 @@ resource "aws_iam_role" "lambda_campaign_role" {
 
 # Lambda Execution Role for API Functions (CRUD, Presigned URL)
 resource "aws_iam_role" "lambda_api_role" {
-  name = "${var.project_name}-${var.environment}-lambda-api-role"
+  name = "${var.project_name}-${var.environment}-lambda-api-role-${random_string.iam_suffix.result}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+# Lambda Execution Role for Sentiment Analysis Functions
+resource "aws_iam_role" "lambda_sentiment_role" {
+  name = "${var.project_name}-${var.environment}-lambda-sentiment-role-${random_string.iam_suffix.result}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+# Lambda Execution Role for Lokalize Functions
+resource "aws_iam_role" "lambda_lokalize_role" {
+  name = "${var.project_name}-${var.environment}-lambda-lokalize-role-${random_string.iam_suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -63,7 +110,7 @@ resource "aws_iam_role" "lambda_api_role" {
 
 # EventBridge Role for Pipes
 resource "aws_iam_role" "eventbridge_pipes_role" {
-  name = "${var.project_name}-${var.environment}-eventbridge-pipes-role"
+  name = "${var.project_name}-${var.environment}-eventbridge-pipes-role-${random_string.iam_suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -83,7 +130,7 @@ resource "aws_iam_role" "eventbridge_pipes_role" {
 
 # Policy for S3 Access (Image upload/download)
 resource "aws_iam_policy" "s3_access_policy" {
-  name = "${var.project_name}-${var.environment}-s3-access-policy"
+  name = "${var.project_name}-${var.environment}-s3-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -122,7 +169,7 @@ resource "aws_iam_policy" "s3_access_policy" {
 
 # Policy for DynamoDB Access
 resource "aws_iam_policy" "dynamodb_access_policy" {
-  name = "${var.project_name}-${var.environment}-dynamodb-access-policy"
+  name = "${var.project_name}-${var.environment}-dynamodb-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -167,7 +214,7 @@ resource "aws_iam_policy" "dynamodb_access_policy" {
 
 # Policy for Rekognition Access
 resource "aws_iam_policy" "rekognition_access_policy" {
-  name = "${var.project_name}-${var.environment}-rekognition-access-policy"
+  name = "${var.project_name}-${var.environment}-rekognition-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -202,7 +249,7 @@ resource "aws_iam_policy" "rekognition_access_policy" {
 
 # Policy for Bedrock Access
 resource "aws_iam_policy" "bedrock_access_policy" {
-  name = "${var.project_name}-${var.environment}-bedrock-access-policy"
+  name = "${var.project_name}-${var.environment}-bedrock-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -238,7 +285,7 @@ resource "aws_iam_policy" "bedrock_access_policy" {
 
 # Policy for Comprehend Access
 resource "aws_iam_policy" "comprehend_access_policy" {
-  name = "${var.project_name}-${var.environment}-comprehend-access-policy"
+  name = "${var.project_name}-${var.environment}-comprehend-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -261,7 +308,7 @@ resource "aws_iam_policy" "comprehend_access_policy" {
 
 # Policy for SQS Access
 resource "aws_iam_policy" "sqs_access_policy" {
-  name = "${var.project_name}-${var.environment}-sqs-access-policy"
+  name = "${var.project_name}-${var.environment}-sqs-access-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -285,7 +332,7 @@ resource "aws_iam_policy" "sqs_access_policy" {
 
 # Policy for EventBridge Pipes
 resource "aws_iam_policy" "eventbridge_pipes_policy" {
-  name = "${var.project_name}-${var.environment}-eventbridge-pipes-policy"
+  name = "${var.project_name}-${var.environment}-eventbridge-pipes-policy-${random_string.iam_suffix.result}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -313,6 +360,28 @@ resource "aws_iam_policy" "eventbridge_pipes_policy" {
           "lambda:InvokeFunction"
         ]
         Resource = "arn:aws:lambda:*:*:function:${var.project_name}-${var.environment}-*"
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+# Policy for Translate Access
+resource "aws_iam_policy" "translate_access_policy" {
+  name = "${var.project_name}-${var.environment}-translate-access-policy-${random_string.iam_suffix.result}"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "translate:TranslateText",
+          "translate:GetTerminology",
+          "translate:ListTerminologies"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -387,6 +456,38 @@ resource "aws_iam_role_policy_attachment" "lambda_api_dynamodb" {
 resource "aws_iam_role_policy_attachment" "eventbridge_pipes_policy_attachment" {
   role       = aws_iam_role.eventbridge_pipes_role.name
   policy_arn = aws_iam_policy.eventbridge_pipes_policy.arn
+}
+
+# Attach policies to Sentiment Analysis Lambda Role
+resource "aws_iam_role_policy_attachment" "lambda_sentiment_basic" {
+  role       = aws_iam_role.lambda_sentiment_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_sentiment_comprehend" {
+  role       = aws_iam_role.lambda_sentiment_role.name
+  policy_arn = aws_iam_policy.comprehend_access_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_sentiment_dynamodb" {
+  role       = aws_iam_role.lambda_sentiment_role.name
+  policy_arn = aws_iam_policy.dynamodb_access_policy.arn
+}
+
+# Attach policies to Lokalize Lambda Role
+resource "aws_iam_role_policy_attachment" "lambda_lokalize_basic" {
+  role       = aws_iam_role.lambda_lokalize_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_lokalize_bedrock" {
+  role       = aws_iam_role.lambda_lokalize_role.name
+  policy_arn = aws_iam_policy.bedrock_access_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_lokalize_translate" {
+  role       = aws_iam_role.lambda_lokalize_role.name
+  policy_arn = aws_iam_policy.translate_access_policy.arn
 }
 
 # Data source for current AWS account ID

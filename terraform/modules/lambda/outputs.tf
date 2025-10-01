@@ -37,6 +37,17 @@ output "get_status_function_arn" {
   value       = aws_lambda_function.get_status.arn
 }
 
+# Sentiment Analysis Lambda Function ARNs
+output "comprehend_analysis_function_arn" {
+  description = "ARN of the comprehend analysis Lambda function"
+  value       = aws_lambda_function.comprehend_analysis.arn
+}
+
+output "action_items_generator_function_arn" {
+  description = "ARN of the action items generator Lambda function"
+  value       = aws_lambda_function.action_items_generator.arn
+}
+
 # Individual Lambda Function Names
 output "analyze_image_function_name" {
   description = "Name of the analyze image Lambda function"

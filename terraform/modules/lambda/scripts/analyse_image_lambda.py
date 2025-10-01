@@ -23,7 +23,7 @@ except Exception as e:
     raise
 
 class ProductImageAnalyzer:
-    def __init__(self, region_name='eu-west-2'):
+    def __init__(self, region_name='eu-west-1'):
         """Initialize AWS clients"""
         try:
             logger.info(f"Initializing ProductImageAnalyzer with region: {region_name}")

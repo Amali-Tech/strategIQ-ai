@@ -16,6 +16,11 @@ output "campaign_data_table_name" {
   value       = aws_dynamodb_table.campaign_data.name
 }
 
+output "comments_table_name" {
+  description = "Name of the comments DynamoDB table"
+  value       = aws_dynamodb_table.comments.name
+}
+
 output "sentiment_analysis_table_name" {
   description = "Name of the sentiment analysis DynamoDB table"
   value       = aws_dynamodb_table.sentiment_analysis.name

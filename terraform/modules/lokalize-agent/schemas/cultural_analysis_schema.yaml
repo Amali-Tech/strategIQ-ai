@@ -1,0 +1,72 @@
+openapi: 3.0.0
+info:
+  title: Cultural Analysis API
+  description: Analyze marketing content for cultural appropriateness
+  version: 1.0.0
+paths:
+  /analyze-cultural-appropriateness:
+    post:
+      summary: Analyze ad content for cultural appropriateness in target locale
+      description: Provides detailed cultural analysis including score, issues, and recommendations
+      operationId: analyzeCulturalAppropriateness
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ad_content
+                - target_locale
+              properties:
+                ad_content:
+                  type: string
+                  description: The advertisement content to analyze
+                target_locale:
+                  type: string
+                  description: Target locale/country (e.g., Japan, Saudi Arabia, Germany)
+                content_type:
+                  type: string
+                  enum: [text, image_description, video_description, mixed]
+                  description: Type of content being analyzed
+                  default: text
+                brand_guidelines:
+                  type: string
+                  description: Optional brand guidelines to consider
+      responses:
+        '200':
+          description: Cultural analysis results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cultural_score:
+                    type: number
+                    description: Cultural appropriateness score (1-10)
+                  analysis_summary:
+                    type: string
+                    description: Overall analysis summary
+                  cultural_issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        issue:
+                          type: string
+                        severity:
+                          type: string
+                          enum: [low, medium, high, critical]
+                        explanation:
+                          type: string
+                  recommendations:
+                    type: array
+                    items:
+                      type: string
+                  needs_regeneration:
+                    type: boolean
+                    description: Whether content should be regenerated
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error

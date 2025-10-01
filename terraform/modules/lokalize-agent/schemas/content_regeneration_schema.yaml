@@ -1,0 +1,78 @@
+openapi: 3.0.0
+info:
+  title: Content Regeneration API
+  description: Regenerate marketing content adapted for target locale
+  version: 1.0.0
+paths:
+  /regenerate-content:
+    post:
+      summary: Regenerate marketing content for target locale
+      description: Creates culturally-adapted version of marketing content
+      operationId: regenerateContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - original_content
+                - target_locale
+              properties:
+                original_content:
+                  type: string
+                  description: Original advertisement content
+                target_locale:
+                  type: string
+                  description: Target locale for adaptation
+                cultural_analysis:
+                  type: object
+                  description: Results from cultural analysis
+                adaptation_level:
+                  type: string
+                  enum: [light, moderate, heavy]
+                  description: Level of adaptation needed
+                  default: moderate
+                brand_voice:
+                  type: string
+                  description: Brand voice guidelines to maintain
+                content_type:
+                  type: string
+                  enum: [headline, body_copy, cta, full_ad]
+                  description: Type of content to regenerate
+                  default: full_ad
+      responses:
+        '200':
+          description: Regenerated content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  regenerated_content:
+                    type: string
+                    description: Culturally-adapted content
+                  adaptations_made:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        change_type:
+                          type: string
+                        original:
+                          type: string
+                        adapted:
+                          type: string
+                        reason:
+                          type: string
+                  cultural_improvements:
+                    type: array
+                    items:
+                      type: string
+                  brand_consistency_score:
+                    type: number
+                    description: How well adapted content maintains brand (1-10)
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error

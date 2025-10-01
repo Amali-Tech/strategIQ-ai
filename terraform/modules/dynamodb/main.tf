@@ -58,6 +58,31 @@ resource "aws_dynamodb_table" "campaign_data" {
   })
 }
 
+# Comments Table - Stores comments for sentiment analysis (VOM table structure)
+resource "aws_dynamodb_table" "comments" {
+  name           = "vom-table"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "PK"
+  range_key      = "SK"
+  stream_enabled = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK" 
+    type = "S"
+  }
+
+  tags = merge(var.tags, {
+    Name = "vom-table"
+    Purpose = "Store comments and sentiment analysis data"
+  })
+}
+
 # Sentiment Analysis Table - Stores sentiment analysis results
 resource "aws_dynamodb_table" "sentiment_analysis" {
   name           = "${var.project_name}-${var.environment}-sentiment-analysis"

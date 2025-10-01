@@ -65,6 +65,19 @@ data "archive_file" "get_status_lambda" {
   output_path = "${path.module}/zips/get_status_lambda.zip"
 }
 
+# Sentiment Analysis Lambda ZIP files
+data "archive_file" "comprehend_analysis_lambda" {
+  type        = "zip"
+  source_file = "${path.module}/scripts/comprehend_analysis.py"
+  output_path = "${path.module}/zips/comprehend_analysis_lambda.zip"
+}
+
+data "archive_file" "action_items_generator_lambda" {
+  type        = "zip"
+  source_file = "${path.module}/scripts/action_items_and_summary_generator.py"
+  output_path = "${path.module}/zips/action_items_generator_lambda.zip"
+}
+
 # Lambda Function: Analyze Image (triggered by S3 uploads)
 resource "aws_lambda_function" "analyze_image" {
   filename         = data.archive_file.analyze_image_lambda.output_path
@@ -181,6 +194,48 @@ resource "aws_lambda_function" "get_status" {
     variables = {
       ANALYSIS_TABLE     = var.product_analysis_table_name
       ENRICHED_TABLE     = var.enriched_data_table_name
+    }
+  }
+  
+  tags = var.tags
+  
+  depends_on = [aws_lambda_layer_version.shared_dependencies]
+}
+
+# Lambda Function: Comprehend Analysis (Sentiment Analysis)
+resource "aws_lambda_function" "comprehend_analysis" {
+  filename         = data.archive_file.comprehend_analysis_lambda.output_path
+  function_name    = "${var.project_name}-${var.environment}-comprehend-analysis"
+  role            = var.lambda_sentiment_role_arn
+  handler         = "comprehend_analysis.lambda_handler"
+  source_code_hash = data.archive_file.comprehend_analysis_lambda.output_base64sha256
+  runtime         = "python3.11"
+  timeout         = 300
+  memory_size     = 512
+  
+  layers = [aws_lambda_layer_version.shared_dependencies.arn]
+  
+  tags = var.tags
+  
+  depends_on = [aws_lambda_layer_version.shared_dependencies]
+}
+
+# Lambda Function: Action Items Generator
+resource "aws_lambda_function" "action_items_generator" {
+  filename         = data.archive_file.action_items_generator_lambda.output_path
+  function_name    = "${var.project_name}-${var.environment}-action-items-generator"
+  role            = var.lambda_sentiment_role_arn
+  handler         = "action_items_and_summary_generator.lambda_handler"
+  source_code_hash = data.archive_file.action_items_generator_lambda.output_base64sha256
+  runtime         = "python3.11"
+  timeout         = 300
+  memory_size     = 1024
+  
+  layers = [aws_lambda_layer_version.shared_dependencies.arn]
+  
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.comments_table_name
     }
   }
   

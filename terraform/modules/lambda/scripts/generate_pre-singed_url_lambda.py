@@ -7,7 +7,7 @@ import hashlib
 
 s3 = boto3.client(
     "s3", 
-    region_name="eu-west-2",
+    region_name="eu-west-1",
     config=boto3.session.Config(
         s3={"addressing_style": "virtual"}
     )

@@ -1,10 +1,5 @@
 # Main Terraform Configuration for AWS AI Hackathon
 
-# Configure the AWS Provider
-provider "aws" {
-  region = var.aws_region
-}
-
 # IAM Module - Must be first as other modules depend on roles
 module "iam" {
   source = "./modules/iam"
@@ -58,9 +53,11 @@ module "lambda" {
   lambda_image_analysis_role_arn  = module.iam.lambda_image_analysis_role_arn
   lambda_campaign_role_arn        = module.iam.lambda_campaign_role_arn
   lambda_api_role_arn             = module.iam.lambda_api_role_arn
+  lambda_sentiment_role_arn       = module.iam.lambda_sentiment_role_arn
   s3_bucket_name                  = module.s3.bucket_name
   product_analysis_table_name     = module.dynamodb.product_analysis_table_name
   enriched_data_table_name        = module.dynamodb.enriched_data_table_name
+  comments_table_name             = module.dynamodb.comments_table_name
   campaign_sqs_queue_url          = module.sqs.campaign_generation_queue_url
   youtube_api_key                 = var.youtube_api_key
   bedrock_model_id                = var.bedrock_model_id
@@ -103,6 +100,25 @@ module "eventbridge" {
   
   depends_on = [module.iam, module.dynamodb, module.lambda, module.sqs]
 }
+
+# Lokalize Agent Module
+module "lokalize_agent" {
+  source = "./modules/lokalize-agent"
+  
+  project_name                = var.project_name
+  environment                = var.environment
+  knowledge_base_id          = var.knowledge_base_id
+  agent_name                 = "Lokalize-Marketing-Agent"
+  schemas_bucket_name        = "lokalize-schemas-${data.aws_caller_identity.current.account_id}"
+  lambda_execution_role_arn  = module.iam.lambda_lokalize_role_arn
+  
+  tags = local.common_tags
+  
+  depends_on = [module.iam]
+}
+
+# Data sources
+data "aws_caller_identity" "current" {}
 
 # Local values for common tags
 locals {

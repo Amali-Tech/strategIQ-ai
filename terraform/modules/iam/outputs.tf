@@ -15,6 +15,16 @@ output "lambda_api_role_arn" {
   value       = aws_iam_role.lambda_api_role.arn
 }
 
+output "lambda_sentiment_role_arn" {
+  description = "ARN of the Lambda sentiment analysis execution role"
+  value       = aws_iam_role.lambda_sentiment_role.arn
+}
+
+output "lambda_lokalize_role_arn" {
+  description = "ARN of the Lambda Lokalize execution role"
+  value       = aws_iam_role.lambda_lokalize_role.arn
+}
+
 output "eventbridge_pipes_role_arn" {
   description = "ARN of the EventBridge Pipes execution role"
   value       = aws_iam_role.eventbridge_pipes_role.arn
@@ -26,5 +36,7 @@ output "all_lambda_role_arns" {
     image_analysis = aws_iam_role.lambda_image_analysis_role.arn
     campaign       = aws_iam_role.lambda_campaign_role.arn
     api           = aws_iam_role.lambda_api_role.arn
+    sentiment     = aws_iam_role.lambda_sentiment_role.arn
+    lokalize      = aws_iam_role.lambda_lokalize_role.arn
   }
 }

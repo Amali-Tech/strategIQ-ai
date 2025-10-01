@@ -32,7 +32,7 @@ if [ ! -f "setup.env" ]; then
     log_info "Please create a setup.env file with the following variables:"
     cat << 'EOF'
 # AWS Configuration
-AWS_REGION=eu-west-2
+AWS_REGION=eu-west-1
 AWS_PROFILE=default
 
 # Project Configuration
@@ -318,12 +318,12 @@ main() {
     log_info "Starting AWS AI Hackathon Terraform setup..."
     
     check_aws_cli
-    create_terraform_backend
-    generate_backend_tf
-    generate_tfvars
-    generate_providers_tf
-    generate_variables_tf
-    create_modules_structure
+    # create_terraform_backend
+    # generate_backend_tf
+    # generate_tfvars
+    # generate_providers_tf
+    # generate_variables_tf
+    # create_modules_structure
     validate_setup
     show_next_steps
 }
