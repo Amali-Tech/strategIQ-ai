@@ -39,5 +39,5 @@ variable "bedrock_model_id" {
 variable "knowledge_base_id" {
   description = "Bedrock Knowledge Base ID for cultural intelligence"
   type        = string
-  default     = "7TBCBTCE2X"  # Empty string means no knowledge base
+  default     = "KBRI4XYAXE"  # Empty string means no knowledge base
 }

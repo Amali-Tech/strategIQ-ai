@@ -279,7 +279,7 @@ resource "aws_cloudformation_stack" "lokalize_agent" {
         Properties = {
           AgentName = local.agent_name_with_suffix
           AgentResourceRoleArn = aws_iam_role.bedrock_agent_role.arn
-          FoundationModel = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+          FoundationModel = "amazon.nova-pro-v1:0"
           Description = "AI marketing localization specialist for cultural adaptation"
           IdleSessionTTLInSeconds = 1800
           Instruction = <<-EOT
