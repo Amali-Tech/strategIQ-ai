@@ -1,0 +1,11 @@
+Country,Population_Millions,GDP_Per_Capita_USD,Primary_Language,Internet_Penetration,Mobile_Penetration,Key_Industries,Cultural_Context
+Spain,47.3,29000,Spanish,93,108,Tourism_Manufacturing_Technology,European_Mediterranean
+Mexico,128.9,10000,Spanish,72,89,Manufacturing_Oil_Tourism,North_American_Indigenous
+Argentina,45.2,10500,Spanish,81,131,Agriculture_Manufacturing_Services,European_Influenced
+Colombia,50.9,6100,Spanish,68,124,Coffee_Mining_Tourism,Andean_Caribbean
+Peru,32.9,6700,Spanish_Quechua,60,119,Mining_Agriculture_Tourism,Andean_Indigenous
+Chile,19.1,15300,Spanish,82,134,Mining_Agriculture_Services,Pacific_European
+Venezuela,28.4,2500,Spanish,72,95,Oil_Mining_Agriculture,Caribbean_Crisis
+Ecuador,17.6,6200,Spanish_Quechua,57,88,Oil_Agriculture_Tourism,Andean_Pacific
+Guatemala,17.9,4600,Spanish_Maya,34,119,Agriculture_Manufacturing_Tourism,Central_American_Indigenous
+Costa_Rica,5.1,12500,Spanish,74,169,Tourism_Technology_Agriculture,Central_American_Stable

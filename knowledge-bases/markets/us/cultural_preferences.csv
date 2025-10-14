@@ -1,0 +1,11 @@
+Category,Preference,Importance_Score,Regional_Variation,Age_Factor
+Communication_Style,Direct_Informal,8.5,Low,Younger_More_Informal
+Personal_Space,Arms_Length,7.8,Medium,Urban_Less_Space
+Eye_Contact,Direct_Expected,9.2,Low,Professional_Settings_High
+Time_Orientation,Punctual_Efficient,9.0,Medium,Business_Critical
+Hierarchy,Low_Formal,6.5,High,Corporate_Higher
+Individualism,High_Independent,9.5,Low,Core_Value
+Uncertainty_Avoidance,Medium_Flexible,6.8,Medium,Tech_Lower
+Power_Distance,Low_Egalitarian,7.2,Medium,Regional_Variation
+Masculinity_Femininity,Balanced_Achievement,7.5,High,Gender_Evolving
+Long_Term_Orientation,Medium_Pragmatic,7.0,Medium,Business_Higher

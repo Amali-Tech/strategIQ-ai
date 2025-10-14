@@ -1,0 +1,11 @@
+City_Tier,Population_Millions,Average_Income_RMB,Digital_Adoption,Luxury_Spending,Education_Level,Key_Industries
+Tier_1_Beijing,21.5,180000,Very_High,Very_High,University,Technology_Finance_Government
+Tier_1_Shanghai,24.3,195000,Very_High,Very_High,University,Finance_Trade_Manufacturing
+Tier_1_Guangzhou,15.0,165000,Very_High,High,University,Manufacturing_Trade_Technology
+Tier_1_Shenzhen,12.6,220000,Very_High,Very_High,University,Technology_Finance_Innovation
+Tier_2_Chengdu,20.9,95000,High,Medium,College,Technology_Manufacturing_Tourism
+Tier_2_Hangzhou,11.8,135000,Very_High,High,University,Technology_Manufacturing_Trade
+Tier_2_Nanjing,9.3,125000,High,Medium,University,Technology_Education_Manufacturing
+Tier_2_Wuhan,11.2,88000,High,Medium,University,Technology_Education_Steel
+Tier_3_Changsha,10.0,68000,Medium,Low,College,Manufacturing_Agriculture_Technology
+Tier_3_Hefei,9.4,72000,Medium,Low,College,Technology_Agriculture_Manufacturing

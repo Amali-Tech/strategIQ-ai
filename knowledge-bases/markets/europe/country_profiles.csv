@@ -1,0 +1,11 @@
+Country,Population_Millions,GDP_Per_Capita_USD,Primary_Language,Internet_Penetration,Mobile_Penetration,GDPR_Compliance,Key_Cultural_Traits
+Germany,83.2,46000,German,89,107,Strict,Efficiency_Quality_Punctuality
+France,67.4,40000,French,85,105,Strict,Elegance_Lifestyle_Intellectual
+United_Kingdom,67.1,42000,English,95,120,Post_Brexit_Rules,Tradition_Humor_Privacy
+Italy,59.6,32000,Italian,74,134,Strict,Family_Style_Regional_Pride
+Netherlands,17.4,52000,Dutch,96,123,Very_Strict,Direct_Egalitarian_Innovation
+Spain,47.3,29000,Spanish,93,108,Strict,Relaxed_Family_Regional_Identity
+Sweden,10.4,51000,Swedish,97,126,Very_Strict,Equality_Sustainability_Innovation
+Switzerland,8.7,81000,German_French_Italian,89,129,Aligned_EU_Standards,Precision_Quality_Neutrality
+Belgium,11.5,43000,Dutch_French_German,90,119,Strict,Multilingual_EU_Bureaucratic
+Austria,9.0,45000,German,88,159,Strict,Traditional_Quality_Cultural_Heritage

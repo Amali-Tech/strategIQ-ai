@@ -1,0 +1,11 @@
+Market,Power_Distance,Individualism,Masculinity,Uncertainty_Avoidance,Long_Term_Orientation,Communication_Style,Time_Orientation,Relationship_Focus,Formality_Level
+United_States,Low,Very_High,High,Medium,Medium,Direct,Punctual,Medium,Low
+China,High,Low,Medium,Medium,Very_High,High_Context,Flexible,Very_High,High
+Germany,Low,High,High,Medium,High,Very_Direct,Very_Punctual,Low,Medium
+France,Medium,High,Low,High,Medium,Contextual,Flexible,Medium,Medium
+United_Kingdom,Low,Very_High,High,Low,Low,Indirect,Punctual,Medium,Medium
+Spain,Medium,Medium,Low,High,Medium,Warm,Relaxed,High,Medium
+Mexico,High,Low,High,High,Low,High_Context,Very_Flexible,Very_High,High
+Brazil,High,Medium,Medium,High,Medium,Expressive,Flexible,High,Medium
+Japan,Medium,Low,High,Very_High,Very_High,Very_High_Context,Punctual,High,Very_High
+India,High,Low,Medium,Low,Medium,Contextual,Flexible,High,High

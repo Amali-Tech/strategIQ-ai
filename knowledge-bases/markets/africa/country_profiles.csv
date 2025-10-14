@@ -1,0 +1,11 @@
+Country,Population_Millions,GDP_Per_Capita_USD,Primary_Language,Secondary_Language,Internet_Penetration,Mobile_Penetration,Key_Industries,Mobile_Money_Usage
+Ghana,32.8,2200,English,Twi_Ga_Ewe,68,118,Gold_Cocoa_Oil_Technology,High
+Nigeria,218.5,2100,English,Hausa_Yoruba_Igbo,51,104,Oil_Agriculture_Technology_Nollywood,Medium
+South_Africa,59.9,6000,English_Afrikaans,Zulu_Xhosa_Others,68,165,Mining_Manufacturing_Finance_Tourism,Medium_High
+Kenya,54.0,1800,English_Swahili,Kikuyu_Luhya,43,119,Agriculture_Tourism_Technology_Tea,Very_High
+Egypt,104.3,3000,Arabic,English,57,94,Tourism_Agriculture_Manufacturing_Suez,Medium
+Morocco,37.5,3200,Arabic_Berber,French,65,129,Agriculture_Tourism_Manufacturing_Phosphates,Low
+Ethiopia,120.8,900,Amharic,Oromo_Tigrinya,21,52,Agriculture_Coffee_Manufacturing_Textiles,Low
+Tanzania,61.5,1100,Swahili_English,Local_Languages,32,82,Agriculture_Mining_Tourism_Manufacturing,High
+Uganda,47.1,800,English,Luganda_Swahili,23,65,Agriculture_Coffee_Manufacturing_Services,Very_High
+Rwanda,13.3,800,English_French,Kinyarwanda,65,79,Agriculture_Tourism_Technology_Coffee,Very_High
