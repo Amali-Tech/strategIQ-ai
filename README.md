@@ -45,7 +45,7 @@ This solution implements a **two-phase serverless architecture** with event-driv
    - Analyzes social media engagement metrics
 4. **Enriched Data** stored in DynamoDB Table 2
 5. **Campaign Generator Lambda** creates marketing content:
-   - Uses Amazon Bedrock (Claude/GPT models)
+   - Uses Amazon Bedrock (Nova Pro models)
    - Generates comprehensive campaign strategies
    - Incorporates trend analysis and product insights
 6. **Final Results** stored with campaign recommendations
@@ -115,7 +115,7 @@ The EventBridge Pipe serves as the backbone of our processing pipeline:
 
 **AI Integration**:
 
-- Uses Claude/GPT models via Amazon Bedrock
+- Uses Amazon Nova Pro models via Amazon Bedrock
 - Context-aware prompt engineering
 - Multi-format output generation (social media, email, web)
 - Brand voice adaptation and tone optimization
@@ -158,7 +158,7 @@ The EventBridge Pipe serves as the backbone of our processing pipeline:
 
 - AWS Account with appropriate IAM permissions
 - YouTube Data API v3 key ([Get API Key](https://developers.google.com/youtube/v3/getting-started))
-- Amazon Bedrock model access (Claude 3.5 Sonnet recommended)
+- Amazon Bedrock model access (Amazon Nova Pro recommended)
 - Terraform installed locally
   {warning}
 

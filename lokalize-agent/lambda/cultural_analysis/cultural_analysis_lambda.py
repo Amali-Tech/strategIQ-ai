@@ -52,7 +52,7 @@ def lambda_handler(event, context):
         logger.info(f"Parameters - Content: {ad_content[:100]}..., Locale: {target_locale}")
 
         # Perform analysis
-        analysis_result = analyze_content_with_claude(
+        analysis_result = analyze_content_with_nova(
             ad_content, target_locale, content_type, brand_guidelines
         )
 
@@ -106,13 +106,13 @@ def lambda_handler(event, context):
         return error_response
 
 
-def analyze_content_with_claude(
+def analyze_content_with_nova(
         ad_content: str,
         target_locale: str,
         content_type: str,
         brand_guidelines: str
 ) -> dict:
-    """Perform cultural analysis using Claude 3.5 Sonnet"""
+    """Perform cultural analysis using Amazon Nova Pro"""
 
     if not ad_content or not target_locale:
         return {
@@ -126,7 +126,7 @@ def analyze_content_with_claude(
         }
 
     bedrock_runtime = boto3.client('bedrock-runtime')
-    model_id = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0'
+    model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
 
     analysis_prompt = f"""You are an expert cultural marketing analyst. Analyze this {content_type} advertisement for {target_locale}.
 
@@ -157,17 +157,18 @@ Respond with ONLY valid JSON in this exact format:
     "needs_regeneration": <true if score < 7, false otherwise>
 }}"""
 
-    # Claude 3.5 Sonnet message format
+    # Amazon Nova Pro message format
     body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 2000,
-        "temperature": 0.3,
         "messages": [
             {
                 "role": "user",
-                "content": analysis_prompt
+                "content": [{"text": analysis_prompt}]
             }
-        ]
+        ],
+        "inferenceConfig": {
+            "maxTokens": 2000,
+            "temperature": 0.3
+        }
     })
 
     try:
@@ -179,11 +180,15 @@ Respond with ONLY valid JSON in this exact format:
 
         result = json.loads(response['body'].read())
 
-        # Extract Claude's response
-        if 'content' in result and len(result['content']) > 0:
-            content_text = result['content'][0].get('text', '{}')
+        # Extract Nova's response
+        if 'output' in result and 'message' in result['output']:
+            content = result['output']['message'].get('content', [])
+            if content and len(content) > 0:
+                content_text = content[0].get('text', '{}')
+            else:
+                raise Exception("No content in Nova response")
         else:
-            raise Exception("No content in Claude response")
+            raise Exception("No output message in Nova response")
 
         # Parse JSON response
         try:
@@ -208,7 +213,7 @@ Respond with ONLY valid JSON in this exact format:
             return create_fallback_response(target_locale, f"JSON parsing failed: {str(e)}")
 
     except Exception as e:
-        logger.error(f"Error invoking Claude: {e}")
+        logger.error(f"Error invoking Nova: {e}")
         return create_fallback_response(target_locale, str(e))
 
 

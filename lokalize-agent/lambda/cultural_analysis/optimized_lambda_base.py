@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize clients outside handler (connection reuse)
 BEDROCK_RUNTIME = boto3.client('bedrock-runtime')
-MODEL_ID = os.environ.get('MODEL_ID', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0')
+MODEL_ID = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
 
 
 # Cache for repeated operations
@@ -48,10 +48,16 @@ def invoke_model_optimized(prompt: str, max_tokens: int = 1000) -> Dict[str, Any
     """Optimized model invocation with reduced token limits"""
 
     body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": max_tokens,  # Reduced from 2000-3000
-        "temperature": 0.1,  # Lower temperature for faster, more deterministic responses
-        "messages": [{"role": "user", "content": prompt}]
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"text": prompt}]
+            }
+        ],
+        "inferenceConfig": {
+            "maxTokens": max_tokens,  # Reduced from 2000-3000
+            "temperature": 0.1  # Lower temperature for faster, more deterministic responses
+        }
     })
 
     try:
@@ -63,10 +69,14 @@ def invoke_model_optimized(prompt: str, max_tokens: int = 1000) -> Dict[str, Any
 
         result = json.loads(response['body'].read())
 
-        if 'content' in result and len(result['content']) > 0:
-            return json.loads(result['content'][0].get('text', '{}'))
+        if 'output' in result and 'message' in result['output']:
+            content = result['output']['message'].get('content', [])
+            if content and len(content) > 0:
+                return json.loads(content[0].get('text', '{}'))
+            else:
+                raise Exception("No content in Nova response")
         else:
-            raise Exception("No content in response")
+            raise Exception("No output message in Nova response")
 
     except Exception as e:
         logger.error(f"Model invocation error: {e}")

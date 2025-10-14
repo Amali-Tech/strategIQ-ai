@@ -46,7 +46,7 @@ def lambda_handler(event, context):
         logger.info(f"Regenerating content for {target_locale}, level: {adaptation_level}")
 
         # Perform regeneration
-        regeneration_result = regenerate_content_with_claude(
+        regeneration_result = regenerate_content_with_nova(
             original_content, target_locale, adaptation_level, brand_voice, content_type
         )
 
@@ -96,14 +96,14 @@ def lambda_handler(event, context):
         return error_response
 
 
-def regenerate_content_with_claude(
+def regenerate_content_with_nova(
         original_content: str,
         target_locale: str,
         adaptation_level: str,
         brand_voice: str,
         content_type: str
 ) -> dict:
-    """Regenerate content using Claude 3.5 Sonnet"""
+    """Regenerate content using Amazon Nova Pro"""
 
     if not original_content or not target_locale:
         return {
@@ -114,7 +114,7 @@ def regenerate_content_with_claude(
         }
 
     bedrock_runtime = boto3.client('bedrock-runtime')
-    model_id = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0'
+    model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
 
     regeneration_prompt = f"""You are an expert marketing localization specialist. Regenerate this {content_type} for {target_locale} with {adaptation_level} adaptation level.
 

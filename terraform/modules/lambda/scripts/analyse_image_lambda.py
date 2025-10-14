@@ -224,23 +224,37 @@ class ProductImageAnalyzer:
 
     def store_in_dynamodb(self, table_name: str, bucket_name: str, object_key: str, 
                          analysis_results: dict, product_info: dict, s3_metadata: dict) -> str:
-        """Store product image analysis results in DynamoDB"""
+        """Store product image analysis results in DynamoDB using single table design"""
         try:
             logger.info(f"Storing data in DynamoDB table: {table_name}")
             table = self.dynamodb.Table(table_name)
             
-            # Generate unique ID for the record
-            item_id = str(uuid.uuid4())
+            # Generate imageHash from object_key (same as presigned URL function)
             image_hash = base64.urlsafe_b64encode(hashlib.sha256(object_key.encode()).digest()).decode('utf-8').rstrip('=')
+            
+            # Create timestamp for this stage
+            timestamp = datetime.utcnow().isoformat()
+            
+            # Single table design keys
+            pk = f"PRODUCT#{image_hash}"
+            sk = f"STAGE#ANALYSIS#{timestamp}"
 
-            # Prepare item for DynamoDB
+            # Prepare item for DynamoDB using single table design
             item = {
-                'id': item_id,
-                'bucket_name': bucket_name,
+                'PK': pk,
+                'SK': sk,
+                'GSI1PK': 'STAGE#ANALYSIS',
+                'GSI1SK': timestamp,
+                'GSI2PK': 'STATUS#ANALYZED',
+                'GSI2SK': timestamp,
                 'imageHash': image_hash,
+                'stage': 'ANALYSIS',
+                'status': 'completed',
+                'bucket_name': bucket_name,
+                'object_key': object_key,
                 's3_url': f"s3://{bucket_name}/{object_key}",
                 'public_url': f"https://{bucket_name}.s3.amazonaws.com/{object_key}",
-                'analysis_timestamp': analysis_results['analysis_timestamp'],
+                'analysis_timestamp': timestamp,
                 'user_product_details': s3_metadata.get('product-details', ''),
                 'user_product_category': s3_metadata.get('product-category', ''),
                 'platform': s3_metadata.get('platform', ''),
@@ -255,7 +269,9 @@ class ProductImageAnalyzer:
                 'text_count': len(analysis_results['detected_text']),
                 'categories_count': len(product_info['product_categories']),
                 'raw_analysis': json.dumps(analysis_results),
-                'created_at': datetime.utcnow().isoformat()
+                'created_at': timestamp,
+                'pipeline_status': 'analyzed',
+                'next_step': 'enrichment'
             }
             
             # Convert floats to Decimal for DynamoDB
@@ -263,8 +279,8 @@ class ProductImageAnalyzer:
             
             # Put item in DynamoDB
             table.put_item(Item=item)
-            logger.info(f"Data stored successfully in DynamoDB with ID: {item_id}")
-            return item_id
+            logger.info(f"Data stored successfully in DynamoDB with imageHash: {image_hash}")
+            return image_hash
             
         except Exception as e:
             logger.error(f"Error storing data in DynamoDB: {str(e)}")

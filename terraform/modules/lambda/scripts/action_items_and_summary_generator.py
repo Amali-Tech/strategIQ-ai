@@ -108,14 +108,16 @@ def generate_action_items(all_comments_info):
     """
 
     bedrock_body = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1000,
         "messages": [
             {
                 "role": "user",
-                "content": prompt
+                "content": [{"text": prompt}]
             }
-        ]
+        ],
+        "inferenceConfig": {
+            "maxTokens": 1000,
+            "temperature": 0.7
+        }
     }
 
     try:
@@ -123,14 +125,14 @@ def generate_action_items(all_comments_info):
         # Try using the cross-region inference profile first
         bedrock_response = bedrock.invoke_model(
             body=json.dumps(bedrock_body),
-            modelId='us.anthropic.claude-3-5-sonnet-20241022-v2:0',
+            modelId='anthropic.claude-3-5-sonnet-20241022-v2:0',
             accept='application/json',
             contentType='application/json'
         )
         print("Bedrock call successful")
     except Exception as e:
         print(f"Primary Bedrock model failed: {str(e)}")
-        # Fallback to Claude 3 Haiku if Sonnet is not available
+        # Fallback to Nova Lite if Nova Pro is not available
         try:
             print("Trying fallback model...")
             bedrock_response = bedrock.invoke_model(

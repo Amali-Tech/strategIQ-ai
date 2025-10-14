@@ -377,9 +377,21 @@ def lambda_handler(event, context):
             # Timestamp for tracking
             current_timestamp = new_image.get('analysis_timestamp', {}).get('S', '') or created_at
             
-            # Prepare data for Table 2 with a status field for frontend tracking
+            # Prepare data for single table design with enrichment stage
+            timestamp = datetime.now().isoformat()
+            pk = f"PRODUCT#{image_hash}"
+            sk = f"STAGE#ENRICHMENT#{timestamp}"
+            
             enriched_data = {
-                'imageHash': image_hash,  # Partition key
+                'PK': pk,
+                'SK': sk,
+                'GSI1PK': 'STAGE#ENRICHMENT',
+                'GSI1SK': timestamp,
+                'GSI2PK': 'STATUS#ENRICHED',
+                'GSI2SK': timestamp,
+                'imageHash': image_hash,
+                'stage': 'ENRICHMENT',
+                'status': 'completed',
                 'recordId': record_id,
                 'originalData': {
                     'public_url': public_url,
@@ -392,7 +404,7 @@ def lambda_handler(event, context):
                 },
                 'youtubeResults': youtube_results,
                 'created_at': created_at,
-                'enriched_at': datetime.now().isoformat(),
+                'enriched_at': timestamp,
                 'pipeline_status': 'enriched',  # Status for frontend tracking
                 'next_step': 'content_generation'  # Next step in the pipeline
             }
@@ -426,12 +438,21 @@ def lambda_handler(event, context):
                     "next_step": "content_generation"
                 }
             else:
-                # Create the message for SQS with the enriched data
+                # Create the message for SQS with the enriched data including original analysis
                 sqs_message = {
                     'imageHash': image_hash,
                     'recordId': record_id,
                     'youtubeResults': youtube_results,
                     'object_key': object_key,
+                    'originalData': {
+                        'public_url': public_url,
+                        's3_url': s3_url,
+                        'bucket_name': bucket_name,
+                        'object_key': object_key,
+                        'product_labels': product_labels,
+                        'product_categories': [cat.get('S', '') for cat in product_categories],
+                        'raw_analysis': raw_analysis
+                    },
                     'pipeline_status': 'enriched',  # Status for frontend tracking
                     'next_step': 'content_generation'
                 }

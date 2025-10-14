@@ -12,4 +12,4 @@ environment  = "dev"
 youtube_api_key = "YOUR_YOUTUBE_API_KEY_HERE"
 
 # AI/ML Configuration
-bedrock_model_id = "amazon.nova-pro-v1:0"
+bedrock_model_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"

@@ -43,7 +43,7 @@ def lambda_handler(event, context):
         logger.info(f"Translating from {source_language} to {target_language}")
 
         # Perform translation
-        translation_result = translate_with_claude(
+        translation_result = translate_with_nova(
             content_to_translate, target_language, source_language, content_type
         )
 
@@ -93,13 +93,13 @@ def lambda_handler(event, context):
         return error_response
 
 
-def translate_with_claude(
+def translate_with_nova(
         content: str,
         target_language: str,
         source_language: str,
         content_type: str
 ) -> dict:
-    """Translate content using Claude 3.5 Sonnet"""
+    """Translate content using Amazon Nova Pro"""
 
     if not content or not target_language:
         return {
@@ -110,7 +110,7 @@ def translate_with_claude(
         }
 
     bedrock_runtime = boto3.client('bedrock-runtime')
-    model_id = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0'
+    model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
 
     translation_prompt = f"""You are an expert translator specializing in marketing content. Translate this {content_type} from {source_language} to {target_language}.
 
@@ -138,15 +138,16 @@ Respond with ONLY valid JSON in this exact format:
 }}"""
 
     body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 2000,
-        "temperature": 0.5,
         "messages": [
             {
                 "role": "user",
-                "content": translation_prompt
+                "content": [{"text": translation_prompt}]
             }
-        ]
+        ],
+        "inferenceConfig": {
+            "maxTokens": 2000,
+            "temperature": 0.5
+        }
     })
 
     try:
@@ -158,10 +159,14 @@ Respond with ONLY valid JSON in this exact format:
 
         result = json.loads(response['body'].read())
 
-        if 'content' in result and len(result['content']) > 0:
-            content_text = result['content'][0].get('text', '{}')
+        if 'output' in result and 'message' in result['output']:
+            content = result['output']['message'].get('content', [])
+            if content and len(content) > 0:
+                content_text = content[0].get('text', '{}')
+            else:
+                raise Exception("No content in Nova response")
         else:
-            raise Exception("No content in Claude response")
+            raise Exception("No output message in Nova response")
 
         try:
             parsed_result = json.loads(content_text)
@@ -185,7 +190,7 @@ Respond with ONLY valid JSON in this exact format:
             return create_translation_fallback(content, target_language, str(e))
 
     except Exception as e:
-        logger.error(f"Error invoking Claude: {e}")
+        logger.error(f"Error invoking Nova: {e}")
         return create_translation_fallback(content, target_language, str(e))
 
 

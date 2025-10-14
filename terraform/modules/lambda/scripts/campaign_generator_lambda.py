@@ -12,9 +12,11 @@ class DecimalEncoder(json.JSONEncoder):
             return float(o)
         return super(DecimalEncoder, self).default(o)
 
-# Set environment variables with defaults
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'enriched-products-table')  # Table 2 for enriched data
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'amazon.nova-pro-v1:0')  # Using Amazon Nova Pro
+DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+
+# Get Bedrock model ID from environment variable - no hardcoding
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-sonnet-20240229-v1:0')
+print(f"Using Bedrock Model ID from environment: {BEDROCK_MODEL_ID}")
 
 # Initialize clients
 dynamodb = boto3.resource('dynamodb')
@@ -84,62 +86,26 @@ except Exception as e:
 
 def generate_campaign_with_bedrock(prompt, model_id=BEDROCK_MODEL_ID, max_tokens=4000):
     """
-    Generate marketing campaign content using Amazon Bedrock
+    Generate marketing campaign content using Claude via Bedrock
     """
     try:
-        # Different model providers have different request formats
-        if 'amazon.nova-pro' in model_id:
-            # Format for Amazon Nova Pro model
-            # Nova Pro requires messages in a specific format with content as an array
-            request_body = {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "text": prompt
-                            }
-                        ]
-                    }
-                ],
-                "inferenceConfig": {
-                    "maxTokens": 4000,  # Further increased tokens for complex structured output
-                    "temperature": 0.8,  # Slightly higher temperature for more creative campaigns
-                    "topP": 0.9,
-                    "stopSequences": []  # No stop sequences to ensure complete JSON generation
-                },
-            }
-            print(f"Using Amazon Nova Pro format with content array for structured JSON output")
-        elif 'anthropic.claude' in model_id:
-            # Format for Claude models
-            # Ensure prompt starts with "Human:" as required by Claude
-            if not prompt.startswith("Human:"):
-                prompt = f"Human: {prompt}"
-            
-            request_body = {
-                "prompt": f"\n\n{prompt}\n\nAssistant:",
-                "max_tokens_to_sample": max_tokens,
-                "temperature": 0.7,
-                "top_k": 250,
-                "stop_sequences": ["\n\nHuman:"]
-            }
-        elif 'amazon.titan' in model_id:
-            # Format for Amazon Titan models
-            request_body = {
-                "inputText": prompt,
-                "textGenerationConfig": {
-                    "maxTokenCount": max_tokens,
-                    "temperature": 0.7,
+        print(f"Using Claude model: {model_id}")
+        
+        # Claude format only
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": 0.8,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
                 }
-            }
-        else:
-            # Generic format for other models
-            request_body = {
-                "prompt": prompt,
-                "max_tokens": max_tokens,
-                "temperature": 0.7
-            }
-            
+            ]
+        }
+        print(f"Using Claude format for model: {model_id}")
+        print(f"Invoking Claude with {max_tokens} max tokens")
+        
         # Invoke Bedrock model
         response = bedrock_runtime.invoke_model(
             modelId=model_id,
@@ -155,7 +121,7 @@ def generate_campaign_with_bedrock(prompt, model_id=BEDROCK_MODEL_ID, max_tokens
             response_text = str(response_stream)
             print(f"Received non-streaming response: {response_text[:100]}...")
         
-        # Parse the response based on the model
+        # Parse the response
         try:
             response_body = json.loads(response_text)
         except json.JSONDecodeError as e:
@@ -164,73 +130,17 @@ def generate_campaign_with_bedrock(prompt, model_id=BEDROCK_MODEL_ID, max_tokens
             # Return the raw text as fallback
             return f"Failed to parse JSON response: {response_text[:500]}"
         
-        print(f"Received response from Bedrock model: {model_id}")
-        print("response from bedrock: ", response_body)
+        print(f"Received response from Claude model: {model_id}")
+        print("Claude response structure:", json.dumps(response_body, indent=2)[:500])
         
-        if 'amazon.nova-pro' in model_id:
-            # Parse Nova Pro response format
-            print(f"Nova Pro response structure keys: {list(response_body.keys())}")
-            
-            # Print more detailed debug info about the response structure
-            print(f"Response body type: {type(response_body)}")
-            print(f"Response body (first 500 chars): {json.dumps(response_body)[:500]}")
-            
-            # Nova Pro returns content in different formats depending on the version
-            if 'output' in response_body:
-                print(f"Output field found, type: {type(response_body['output'])}")
-                
-                if isinstance(response_body['output'], list) and len(response_body['output']) > 0:
-                    # Try to extract content from the first output item
-                    output_item = response_body['output'][0]
-                    print(f"Output item type: {type(output_item)}")
-                    
-                    if isinstance(output_item, dict) and 'content' in output_item:
-                        # Handle content as array or string
-                        content = output_item['content']
-                        print(f"Content field found, type: {type(content)}")
-                        
-                        if isinstance(content, list) and len(content) > 0:
-                            # Extract text from content array
-                            text_content = []
-                            for item in content:
-                                if isinstance(item, dict) and 'text' in item:
-                                    text_content.append(item['text'])
-                                elif isinstance(item, str):
-                                    text_content.append(item)
-                            
-                            content = "\n".join(text_content)
-                            print(f"Extracted content from Nova Pro response array, length: {len(content)} characters")
-                        elif isinstance(content, str):
-                            # Content is already a string
-                            print(f"Nova Pro content is a string, length: {len(content)} characters")
-                        else:
-                            # Content is something else - convert it
-                            content = str(content)
-                            print(f"Converted Nova Pro content to string, length: {len(content)} characters")
-                        
-                        return content
-            
-            # Alternative response format: check for "completion" field
-            if 'completion' in response_body:
-                completion = response_body['completion']
-                print(f"Found 'completion' field in Nova Pro response, length: {len(completion)} characters")
-                return completion
-                
-            # If we can't extract content through the expected path, dump the full response
-            print("Using fallback parsing for Nova Pro response")
-            return json.dumps(response_body, indent=2)
-        elif 'anthropic.claude' in model_id:
-            completion = response_body.get('completion', '')
-            print(f"Claude response length: {len(completion)} characters")
-            return completion
-        elif 'amazon.titan' in model_id:
-            output_text = response_body.get('results', [{}])[0].get('outputText', '')
-            print(f"Titan response length: {len(output_text)} characters")
-            return output_text
+        # Parse Claude response format only
+        if 'content' in response_body and isinstance(response_body['content'], list) and len(response_body['content']) > 0:
+            content_text = response_body['content'][0].get('text', '')
+            print(f"Successfully extracted Claude content, length: {len(content_text)} characters")
+            return content_text
         else:
-            generated_text = response_body.get('generated_text', '')
-            print(f"Generic model response length: {len(generated_text)} characters")
-            return generated_text
+            print(f"Unexpected Claude response format: {list(response_body.keys())}")
+            return json.dumps(response_body, indent=2)
             
     except ClientError as e:
         print(f"Error invoking Bedrock model: {e}")
@@ -482,73 +392,51 @@ def lambda_handler(event, context):
                 "pipeline_status": "failed"
             }
         
-        # Fetch the full record from Table 2
+        # Fetch the enrichment record from single table design
         try:
-            print(f"Fetching record from DynamoDB with imageHash: {image_hash}")
+            print(f"Fetching ENRICHMENT stage record from DynamoDB with imageHash: {image_hash}")
             print(f"imageHash type: {type(image_hash)}")
             
             # Ensure imageHash is a string and not None
-            if not image_hash and not record_id:
-                print("Error: Both imageHash and recordId are None or empty")
+            if not image_hash:
+                print("Error: imageHash is None or empty")
                 return {
-                    "error": "Missing valid key (imageHash or recordId)",
+                    "error": "Missing valid imageHash",
                     "pipeline_status": "failed"
                 }
             
-            # First try with imageHash as primary key
-            try:
-                if image_hash:
-                    if not isinstance(image_hash, str):
-                        print(f"Warning: Converting imageHash from {type(image_hash)} to string")
-                        image_hash = str(image_hash)
-                    
-                    print(f"Attempting to get item with imageHash key: {image_hash}")
-                    response = table.get_item(Key={'imageHash': image_hash})
-                    item = response.get('Item', {})
-                    
-                    if item:
-                        print("Successfully retrieved item using imageHash")
-                    else:
-                        print("No item found with imageHash, trying recordId if available")
-                        if record_id:
-                            if not isinstance(record_id, str):
-                                print(f"Warning: Converting recordId from {type(record_id)} to string")
-                                record_id = str(record_id)
-                            
-                            print(f"Attempting to get item with recordId key: {record_id}")
-                            response = table.get_item(Key={'recordId': record_id})
-                            item = response.get('Item', {})
-                else:
-                    # Try with recordId if imageHash is not available
-                    if not isinstance(record_id, str):
-                        print(f"Warning: Converting recordId from {type(record_id)} to string")
-                        record_id = str(record_id)
-                    
-                    print(f"Attempting to get item with recordId key: {record_id}")
-                    response = table.get_item(Key={'recordId': record_id})
-                    item = response.get('Item', {})
-            except Exception as e:
-                print(f"Error with primary key attempt: {e}")
-                # If that fails, try a fallback if we have both keys
-                if image_hash and record_id:
-                    try:
-                        print("Trying composite key approach")
-                        response = table.get_item(Key={
-                            'imageHash': image_hash,
-                            'recordId': record_id
-                        })
-                        item = response.get('Item', {})
-                    except Exception as e2:
-                        print(f"Error with composite key attempt: {e2}")
-                        # Re-raise original error
-                        raise e
+            if not isinstance(image_hash, str):
+                print(f"Warning: Converting imageHash from {type(image_hash)} to string")
+                image_hash = str(image_hash)
             
-            if not item:
-                print(f"No record found for imageHash: {image_hash}")
+            # Query for the ENRICHMENT stage record using single table design
+            pk = f"PRODUCT#{image_hash}"
+            
+            # First, try to get the latest ENRICHMENT stage record
+            print(f"Querying for ENRICHMENT stage with PK: {pk}")
+            
+            # Query all records for this product and filter for ENRICHMENT stage
+            response = table.query(
+                KeyConditionExpression='PK = :pk AND begins_with(SK, :sk_prefix)',
+                ExpressionAttributeValues={
+                    ':pk': pk,
+                    ':sk_prefix': 'STAGE#ENRICHMENT#'
+                },
+                ScanIndexForward=False,  # Get latest first
+                Limit=1
+            )
+            
+            items = response.get('Items', [])
+            
+            if not items:
+                print(f"No ENRICHMENT stage record found for imageHash: {image_hash}")
                 return {
-                    "error": "Record not found",
+                    "error": "ENRICHMENT stage record not found",
                     "pipeline_status": "failed"
                 }
+            
+            item = items[0]  # Get the latest enrichment record
+            print(f"Successfully retrieved ENRICHMENT stage record: {item.get('SK', 'Unknown SK')}")
                 
         except Exception as e:
             print(f"Error fetching record from DynamoDB: {e}")
@@ -564,11 +452,31 @@ def lambda_handler(event, context):
             item_str = json.dumps(item, cls=DecimalEncoder)
             item_dict = json.loads(item_str)
             
-            # Now extract the data from the converted dictionary
+            # Extract data from the single table ENRICHMENT stage record
             original_data = item_dict.get('originalData', {})
             youtube_results = item_dict.get('youtubeResults', [])
             
+            # If originalData is empty, try to get it from the SQS message
+            if not original_data and 'originalData' in processed_message:
+                original_data = processed_message.get('originalData', {})
+                print("Using original_data from SQS message")
+            elif not original_data and 'object_key' in processed_message:
+                # Construct original_data from available information
+                original_data = {
+                    'object_key': processed_message.get('object_key', ''),
+                    'product_labels': [],
+                    'product_categories': []
+                }
+                print("Constructed basic original_data from SQS message")
+            
+            # If youtube_results is empty, try to get it from SQS message
+            if not youtube_results and 'youtubeResults' in processed_message:
+                youtube_results = processed_message.get('youtubeResults', [])
+                print("Using youtubeResults from SQS message")
+            
             print(f"Successfully converted DynamoDB data to JSON-serializable format")
+            print(f"Original data keys: {list(original_data.keys()) if original_data else 'None'}")
+            print(f"YouTube results count: {len(youtube_results)}")
         except Exception as e:
             print(f"Error converting DynamoDB data: {e}")
             return {
@@ -577,20 +485,18 @@ def lambda_handler(event, context):
             }
         
         # Update status to reflect we're starting campaign generation
-        try:
-            table.update_item(
-                Key={'imageHash': image_hash},
-                UpdateExpression="SET pipeline_status = :status",
-                ExpressionAttributeValues={':status': 'generating_campaigns'}
-            )
-        except Exception as e:
-            print(f"Warning: Unable to update status: {e}")
+        # Note: We'll create a new CAMPAIGN stage record instead of updating existing record
+        print("Starting campaign generation - will create new CAMPAIGN stage record")
         
         # Build prompt for Bedrock
         prompt = build_bedrock_prompt(original_data, youtube_results)
         
+        # Use the model ID from environment variable (no hardcoding)
+        model_id = BEDROCK_MODEL_ID
+        print(f"Using Bedrock model from environment: {model_id}")
+        
         # Generate campaign ideas using Bedrock
-        generated_content = generate_campaign_with_bedrock(prompt)
+        generated_content = generate_campaign_with_bedrock(prompt, model_id=model_id)
         
         # Parse the generated content to extract the structured JSON
         try:
@@ -764,29 +670,35 @@ def lambda_handler(event, context):
                 analytics_projections = safe_campaigns_json.get("analytics_projections")
                 print(f"Extracted analytics projections for storage: {analytics_projections}")
                 
+            # Create new CAMPAIGN stage record in single table design
+            pk = f"PRODUCT#{image_hash}"
+            sk = f"STAGE#CAMPAIGN#{current_timestamp}"
+            
+            campaign_item = {
+                'PK': pk,
+                'SK': sk,
+                'GSI1PK': 'STAGE#CAMPAIGN',
+                'GSI1SK': current_timestamp,
+                'GSI2PK': 'STATUS#COMPLETED',
+                'GSI2SK': current_timestamp,
+                'imageHash': image_hash,
+                'stage': 'CAMPAIGN',
+                'status': 'completed',
+                'recordId': record_id,
+                'campaignsJSON': safe_campaigns_json,
+                'pipeline_status': 'completed',
+                'generated_at': current_timestamp,
+                'created_at': current_timestamp
+            }
+            
+            # Add analytics projections if they exist
             if analytics_projections:
-                table.update_item(
-                    Key=update_key,
-                    UpdateExpression="SET campaignsJSON = :campaigns, pipeline_status = :status, generated_at = :timestamp, analyticsProjections = :analytics",
-                    ExpressionAttributeValues={
-                        ':campaigns': safe_campaigns_json,
-                        ':status': 'completed',  # Final status for frontend tracking
-                        ':timestamp': current_timestamp,
-                        ':analytics': analytics_projections
-                    }
-                )
-                print("Updated record with campaigns and analytics projections")
-            else:
-                table.update_item(
-                    Key=update_key,
-                    UpdateExpression="SET campaignsJSON = :campaigns, pipeline_status = :status, generated_at = :timestamp",
-                    ExpressionAttributeValues={
-                        ':campaigns': safe_campaigns_json,
-                        ':status': 'completed',  # Final status for frontend tracking
-                        ':timestamp': current_timestamp
-                    }
-                )
-                print("Updated record with campaigns (no analytics projections)")
+                campaign_item['analyticsProjections'] = analytics_projections
+                print("Added analytics projections to campaign record")
+            
+            # Store the campaign stage record
+            table.put_item(Item=campaign_item)
+            print("Created new CAMPAIGN stage record in single table")
             print(f"Successfully updated record with generated campaigns")
         except Exception as e:
             print(f"Error updating record with campaigns: {e}")
@@ -797,7 +709,7 @@ def lambda_handler(event, context):
             
         # Get actual values from the item - in case the hash has been converted
         item_image_hash = item_dict.get('imageHash', image_hash)
-        item_record_id = item_dict.get('recordId', record_id)
+        item_record_id = item_dict.get('recordId', record_id or '')
         
         # Create response dictionary
         response_dict = {
@@ -807,7 +719,8 @@ def lambda_handler(event, context):
             "recordId": item_record_id,
             "pipeline_status": "completed",
             "campaignCount": len(campaigns_json.get("campaigns", [])) if isinstance(campaigns_json, dict) else 0,
-            "generated_at": current_timestamp
+            "generated_at": current_timestamp,
+            "stage": "CAMPAIGN"
         }
         
         # Add analytics projections if they exist
@@ -823,25 +736,31 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error in campaign generation: {e}")
         
-        # Try to update status to reflect failure
-        if image_hash or record_id:
+        # Try to create a failed CAMPAIGN stage record
+        if image_hash:
             try:
-                # Try imageHash first if available
-                if image_hash:
-                    update_key = {'imageHash': image_hash}
-                else:
-                    update_key = {'recordId': record_id}
+                pk = f"PRODUCT#{image_hash}"
+                sk = f"STAGE#CAMPAIGN#{datetime.now().isoformat()}"
                 
-                table.update_item(
-                    Key=update_key,
-                    UpdateExpression="SET pipeline_status = :status, error_message = :error",
-                    ExpressionAttributeValues={
-                        ':status': 'failed',
-                        ':error': str(e)
-                    }
-                )
+                error_item = {
+                    'PK': pk,
+                    'SK': sk,
+                    'GSI1PK': 'STAGE#CAMPAIGN',
+                    'GSI1SK': datetime.now().isoformat(),
+                    'GSI2PK': 'STATUS#FAILED',
+                    'GSI2SK': datetime.now().isoformat(),
+                    'imageHash': image_hash,
+                    'stage': 'CAMPAIGN',
+                    'status': 'failed',
+                    'pipeline_status': 'failed',
+                    'error_message': str(e),
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                table.put_item(Item=error_item)
+                print("Created failed CAMPAIGN stage record")
             except Exception as update_err:
-                print(f"Failed to update error status: {update_err}")
+                print(f"Failed to create error record: {update_err}")
                 pass
                 
         # Make sure to convert any Decimal values when returning the error
