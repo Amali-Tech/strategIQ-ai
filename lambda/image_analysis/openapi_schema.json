@@ -1,0 +1,279 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Image Analysis Action Group",
+    "version": "1.0.0",
+    "description": "Action group for analyzing product images using Amazon Rekognition and storing structured data"
+  },
+  "paths": {
+    "/analyze-product-image": {
+      "post": {
+        "summary": "Analyze product image using Rekognition",
+        "description": "Analyzes a product image from S3 using Amazon Rekognition to detect labels, then stores structured analysis data in DynamoDB",
+        "operationId": "analyze_product_image",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["product_info", "s3_info"],
+                "properties": {
+                  "product_info": {
+                    "type": "object",
+                    "description": "Information about the product being analyzed",
+                    "required": ["name"],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Product name",
+                        "example": "EcoSmart Water Bottle"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Product description",
+                        "example": "Smart water bottle with temperature control and hydration tracking"
+                      },
+                      "category": {
+                        "type": "string",
+                        "description": "Product category",
+                        "example": "Health & Wellness"
+                      }
+                    }
+                  },
+                  "s3_info": {
+                    "type": "object",
+                    "description": "S3 location of the product image",
+                    "required": ["bucket", "key"],
+                    "properties": {
+                      "bucket": {
+                        "type": "string",
+                        "description": "S3 bucket name containing the image",
+                        "example": "degenerals-mi-dev-images"
+                      },
+                      "key": {
+                        "type": "string",
+                        "description": "S3 object key (path) to the image file",
+                        "example": "uploads/product-images/water-bottle.jpg"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "analysis_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this analysis",
+                          "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                        },
+                        "product_name": {
+                          "type": "string",
+                          "description": "Name of the analyzed product",
+                          "example": "EcoSmart Water Bottle"
+                        },
+                        "detected_labels": {
+                          "type": "array",
+                          "description": "Top detected labels from Rekognition",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "example": "Bottle"
+                              },
+                              "confidence": {
+                                "type": "number",
+                                "format": "float",
+                                "example": 98.5
+                              },
+                              "categories": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "example": ["Objects", "Container"]
+                              },
+                              "instances": {
+                                "type": "integer",
+                                "example": 1
+                              }
+                            }
+                          }
+                        },
+                        "confidence_summary": {
+                          "type": "object",
+                          "properties": {
+                            "high_confidence_labels": {
+                              "type": "array",
+                              "description": "Labels with confidence >= 80%",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "confidence": {
+                                    "type": "number",
+                                    "format": "float"
+                                  }
+                                }
+                              }
+                            },
+                            "total_labels_detected": {
+                              "type": "integer",
+                              "example": 25
+                            }
+                          }
+                        },
+                        "analysis_timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "ISO timestamp of when analysis was performed",
+                          "example": "2025-10-16T23:30:00.000Z"
+                        },
+                        "storage_location": {
+                          "type": "string",
+                          "description": "Where the full analysis data is stored",
+                          "example": "DynamoDB table: degenerals-mi-dev-image-analysis"
+                        },
+                        "recommendations": {
+                          "type": "object",
+                          "description": "AI-generated campaign recommendations based on image analysis",
+                          "properties": {
+                            "primary_visual_elements": {
+                              "type": "array",
+                              "description": "Primary visual elements detected in the image",
+                              "items": {
+                                "type": "string"
+                              },
+                              "example": [
+                                "Bottle",
+                                "Liquid",
+                                "Container",
+                                "Product",
+                                "Technology"
+                              ]
+                            },
+                            "suggested_hashtags": {
+                              "type": "array",
+                              "description": "Suggested hashtags based on detected elements",
+                              "items": {
+                                "type": "string"
+                              },
+                              "example": [
+                                "#bottle",
+                                "#hydration",
+                                "#smarttech",
+                                "#wellness",
+                                "#sustainable"
+                              ]
+                            },
+                            "content_themes": {
+                              "type": "array",
+                              "description": "Suggested content themes for campaigns",
+                              "items": {
+                                "type": "string"
+                              },
+                              "example": [
+                                "technology",
+                                "wellness",
+                                "sustainability"
+                              ]
+                            },
+                            "platform_suitability": {
+                              "type": "object",
+                              "description": "Suitability assessment for different social media platforms",
+                              "properties": {
+                                "Instagram": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"],
+                                  "example": "High"
+                                },
+                                "TikTok": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"],
+                                  "example": "Medium"
+                                },
+                                "LinkedIn": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"],
+                                  "example": "Medium"
+                                },
+                                "Facebook": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"],
+                                  "example": "Medium"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters or missing required fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Product name is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Image analysis failed: Rekognition service error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

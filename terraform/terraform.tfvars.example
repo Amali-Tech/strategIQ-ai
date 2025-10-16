@@ -17,3 +17,19 @@ environment  = "dev"
 
 # Note: Ensure you have access to Claude models through the AWS Bedrock console
 # You may need to request access to Claude models through the AWS Bedrock console
+
+# AWS Profile (uncomment and set if using named profiles)
+# aws_profile = "your-aws-profile"
+
+# YouTube API Configuration
+# youtube_api_key = "your-youtube-api-key-here"
+
+# Bedrock Configuration
+# bedrock_agent_inference_profile_arn = "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/your-profile"
+# bedrock_model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
+
+# S3 CORS Configuration
+s3_allowed_origins = [
+  "http://localhost:3000",
+  "https://your-frontend-domain.com"
+]

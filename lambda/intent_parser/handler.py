@@ -55,7 +55,7 @@ def lambda_handler(event, context):
             return create_response(500, {'error': 'Server configuration error: invalid agent credentials format'})
         
         # Build structured intent for Bedrock agent
-        intent = build_intent(intent_type, request_data)
+        intent = build_intent(intent_type, request_data, context.aws_request_id)
         print(f"Built intent: {json.dumps(intent)}")
         
         # Use Lambda aws_request_id as session ID
@@ -93,33 +93,13 @@ def parse_intent_from_route(route_key, http_method, path):
     Returns:
         String indicating intent type or None if unsupported
     """
-    # Campaign creation and management
-    if route_key == 'POST /campaigns' or (http_method == 'POST' and '/campaigns' in path):
+    # Campaign creation (Tier 1 - Basic Campaign Generation)
+    if route_key == 'POST /api/campaigns' or (http_method == 'POST' and '/api/campaigns' in path):
         return 'create_campaign'
     
-    # Cultural analysis
-    if route_key == 'POST /cultural-analysis' or (http_method == 'POST' and '/cultural-analysis' in path):
-        return 'cultural_analysis'
-    
-    # Market analysis
-    if route_key == 'POST /market-analysis' or (http_method == 'POST' and '/market-analysis' in path):
-        return 'market_analysis'
-    
-    # Sentiment analysis
-    if route_key == 'POST /sentiment-analysis' or (http_method == 'POST' and '/sentiment-analysis' in path):
-        return 'sentiment_analysis'
-    
-    # Image analysis
-    if route_key == 'POST /image-analysis' or (http_method == 'POST' and '/image-analysis' in path):
-        return 'image_analysis'
-    
-    # Translation services
-    if route_key == 'POST /translate' or (http_method == 'POST' and '/translate' in path):
-        return 'translate_content'
-    
-    # Comprehensive campaign (uses all agents)
-    if route_key == 'POST /comprehensive-campaign' or (http_method == 'POST' and '/comprehensive-campaign' in path):
-        return 'comprehensive_campaign'
+    # Comprehensive campaign (Tier 3 - but we'll simplify to basic for now)
+    if route_key == 'POST /api/comprehensive-campaign' or (http_method == 'POST' and '/api/comprehensive-campaign' in path):
+        return 'create_campaign'  # Treat as basic campaign for now
     
     return None
 
@@ -140,140 +120,39 @@ def validate_request(intent_type, request_data):
         if 'name' not in request_data['product']:
             return {'error': 'Product name is required'}
     
-    elif intent_type == 'cultural_analysis':
-        if not request_data.get('content'):
-            return {'error': 'Content field is required for cultural analysis'}
-        if not request_data.get('target_culture'):
-            return {'error': 'Target culture is required for cultural analysis'}
-    
-    elif intent_type in ['market_analysis', 'sentiment_analysis']:
-        if not request_data.get('market_parameters'):
-            return {'error': 'Market parameters are required'}
-    
-    elif intent_type == 'image_analysis':
-        if not request_data.get('image_url') and not request_data.get('image_base64'):
-            return {'error': 'Either image_url or image_base64 is required'}
-    
-    elif intent_type == 'translate_content':
-        if not request_data.get('content'):
-            return {'error': 'Content field is required for translation'}
-        if not request_data.get('target_language'):
-            return {'error': 'Target language is required for translation'}
-    
-    elif intent_type == 'comprehensive_campaign':
-        if not request_data.get('campaign_brief'):
-            return {'error': 'Campaign brief is required for comprehensive campaign creation'}
-    
     return None
 
-def build_intent(intent_type, request_data):
+def build_intent(intent_type, request_data, request_id=None):
     """
     Build structured intent for the Bedrock supervisor agent based on intent type.
     
     Args:
         intent_type: Type of intent being processed
         request_data: Parsed request body
+        request_id: AWS request ID for tracking
     
     Returns:
         Dictionary containing the structured intent with InvokeAgent instructions
     """
     base_intent = {
         'intent_type': intent_type,
-        'timestamp': context.aws_request_id if 'context' in globals() else 'unknown',
+        'timestamp': request_id or 'unknown',
         'output_format': 'structured_json'
     }
     
     if intent_type == 'create_campaign':
         return {
             **base_intent,
-            'task': 'Create a marketing campaign using the campaign generation agent',
-            'instructions': 'InvokeAgent: campaign-generation - Use your image-analysis and data-enrichment tools to gather insights, then generate a comprehensive campaign based on the tool results.',
+            'task': 'Create a basic marketing campaign (Tier 1)',
+            'instructions': 'Use the campaign generation workflow: 1) Analyze product information and any provided images, 2) Generate platform-specific content ideas, 3) Provide structured campaign recommendations with clear next steps.',
             'context': {
                 'product': request_data.get('product'),
                 'target_markets': request_data.get('target_markets', ['Global']),
                 'campaign_objectives': request_data.get('campaign_objectives', ['awareness']),
                 'budget_range': request_data.get('budget_range', 'medium'),
-                'timeline': request_data.get('timeline')
-            }
-        }
-    
-    elif intent_type == 'cultural_analysis':
-        return {
-            **base_intent,
-            'task': 'Validate cultural appropriateness of campaign content',
-            'instructions': 'InvokeAgent: lokalize - Use your cultural-adaptation tool to validate the content against target market cultural norms, then provide a clear assessment of appropriateness.',
-            'context': {
-                'content': request_data.get('content'),
-                'target_culture': request_data.get('target_culture'),
-                'content_type': request_data.get('content_type', 'general'),
-                'adaptation_level': request_data.get('adaptation_level', 'moderate')
-            }
-        }
-    
-    elif intent_type == 'market_analysis':
-        return {
-            **base_intent,
-            'task': 'Conduct comprehensive market analysis',
-            'instructions': 'InvokeAgent: voice-of-the-market - Analyze market trends, competitive landscape, and provide strategic insights for the specified market parameters.',
-            'context': {
-                'market_parameters': request_data.get('market_parameters'),
-                'analysis_focus': request_data.get('analysis_focus', ['market_size', 'competitive_analysis']),
-                'time_horizon': request_data.get('time_horizon', '1_year')
-            }
-        }
-    
-    elif intent_type == 'sentiment_analysis':
-        return {
-            **base_intent,
-            'task': 'Perform sentiment analysis and generate action items',
-            'instructions': 'InvokeAgent: voice-of-the-market - Use your sentiment-analysis tool to gather sentiment data, then use your market-analysis tool to generate specific action items based on the sentiment findings.',
-            'context': {
-                'analysis_parameters': request_data.get('analysis_parameters'),
-                'brand_keywords': request_data.get('brand_keywords', []),
-                'time_range': request_data.get('time_range', '30d'),
-                'channels': request_data.get('channels', ['social_media', 'news_media'])
-            }
-        }
-    
-    elif intent_type == 'image_analysis':
-        return {
-            **base_intent,
-            'task': 'Analyze marketing image for effectiveness and cultural sensitivity',
-            'instructions': 'InvokeAgent: campaign-generation - Analyze the provided image for visual impact, brand consistency, and cultural appropriateness.',
-            'context': {
-                'image_url': request_data.get('image_url'),
-                'image_base64': request_data.get('image_base64'),
-                'analysis_type': request_data.get('analysis_type', 'full'),
-                'target_market': request_data.get('target_market', 'global')
-            }
-        }
-    
-    elif intent_type == 'translate_content':
-        return {
-            **base_intent,
-            'task': 'Translate marketing content while preserving brand voice',
-            'instructions': 'InvokeAgent: lokalize - Translate the provided content to the target language while maintaining brand voice and cultural appropriateness.',
-            'context': {
-                'content': request_data.get('content'),
-                'source_language': request_data.get('source_language', 'en'),
-                'target_language': request_data.get('target_language'),
-                'content_type': request_data.get('content_type', 'general'),
-                'brand_voice': request_data.get('brand_voice', {})
-            }
-        }
-    
-    elif intent_type == 'comprehensive_campaign':
-        return {
-            **base_intent,
-            'task': 'Orchestrate comprehensive campaign development using all specialist agents',
-            'instructions': 'InvokeAgent: voice-of-the-market - Analyze market conditions and sentiment. InvokeAgent: campaign-generation - Create campaign concepts and analyze visuals. InvokeAgent: lokalize - Adapt all content for target markets. Synthesize all insights into a comprehensive campaign strategy.',
-            'context': {
-                'campaign_brief': request_data.get('campaign_brief'),
-                'target_markets': request_data.get('target_markets', []),
-                'budget_range': request_data.get('budget_range', 'medium'),
                 'timeline': request_data.get('timeline'),
-                'brand_guidelines': request_data.get('brand_guidelines', {}),
-                'success_metrics': request_data.get('success_metrics', [])
+                'image_url': request_data.get('image_url'),  # Optional product image
+                'platform_preferences': request_data.get('platform_preferences', ['instagram', 'facebook', 'tiktok'])
             }
         }
     

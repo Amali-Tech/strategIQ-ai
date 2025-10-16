@@ -251,8 +251,7 @@ create_modules_structure(){
         "s3"
         "dynamodb" 
         "lambda"
-        "sqs"
-        "eventbridge"
+        "agents"
         "api-gateway"
         "iam"
     )

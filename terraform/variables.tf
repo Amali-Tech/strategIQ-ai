@@ -32,24 +32,33 @@ variable "project_name" {
 }
 
 variable "aws_profile" {
-  
-}
-
-variable "youtube_api_key" {
-  
-}
-
-variable "bedrock_model_id" {
-  description = "Bedrock model ID to use for agents"
+  description = "aws profile"
   type        = string
 }
 
-variable "tags" {
-  description = "Tags to apply to all resources"
-  type        = map(string)
-  default = {
-    Project     = "lokalize-agent"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
+variable "youtube_api_key" {
+  description = "youtube api key"
+  type        = string
+}
+
+variable "bedrock_agent_inference_profile_arn" {
+  description = "Bedrock model inference profile arn to use for agent"
+  type        = string
+}
+
+variable "bedrock_model_id" {
+  description = "value"
+  type        = string
+}
+
+variable "s3_allowed_origins" {
+  description = "List of allowed origins for S3 CORS configuration"
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "supervisor_agent_alias_id_override" {
+  description = "Override for supervisor agent alias ID (leave empty to use terraform-managed alias)"
+  type        = string
+  default     = ""
 }

@@ -1,51 +1,55 @@
-# Bedrock Multi-Agent Architecture Outputs
+# Root Terraform Outputs
 
-output "bedrock_agents" {
-  description = "Information about all deployed Bedrock agents"
-  value = {
-    campaign_generation = module.agents.campaign_generation_agent
-    lokalize_agent     = module.agents.lokalize_agent
-    voice_of_market    = module.agents.voice_of_market_agent
-    supervisor         = module.agents.supervisor_agent
-  }
+# S3 Bucket outputs for use by other resources
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket for image storage"
+  value       = module.s3.bucket_name
 }
 
-output "action_groups" {
-  description = "Information about all action groups"
-  value = module.agents.action_groups
+output "s3_bucket_arn" {
+  description = "ARN of the S3 bucket for IAM policies"
+  value       = module.s3.bucket_arn
 }
 
-output "multi_agent_collaboration_setup" {
-  description = "Instructions for setting up multi-agent collaboration"
-  value = module.agents.multi_agent_collaboration_setup
+output "s3_bucket_domain_name" {
+  description = "Domain name of the S3 bucket"
+  value       = module.s3.bucket_domain_name
 }
 
-output "api_gateway" {
-  description = "API Gateway information"
-  value = {
-    api_url        = module.api_gateway.api_gateway_stage_url
-    available_routes = module.api_gateway.api_routes
-    intent_parser_function = module.api_gateway.intent_parser_function_name
-  }
+# API Gateway outputs
+output "api_gateway_url" {
+  description = "Full URL of the API Gateway"
+  value       = module.api_gateway.api_gateway_url
 }
 
-output "deployment_summary" {
-  description = "Summary of the deployed infrastructure"
-  value = {
-    region = var.aws_region
-    agents_deployed = 4
-    lambda_functions_deployed = 7  # 6 action groups + 1 intent parser
-    action_groups_deployed = 6
-    api_gateway_deployed = true
-    multi_agent_collaboration = "Manual setup required in AWS Bedrock console"
-    api_endpoint = module.api_gateway.api_gateway_stage_url
-    next_steps = [
-      "1. Open AWS Bedrock console in ${var.aws_region}",
-      "2. Navigate to the supervisor-agent",
-      "3. Enable multi-agent collaboration",
-      "4. Add the three collaborator agents",
-      "5. Test API endpoints at ${module.api_gateway.api_gateway_stage_url}",
-      "6. Test individual agents and collaboration"
-    ]
-  }
+output "presigned_url_endpoint" {
+  description = "Full URL for presigned URL generation"
+  value       = module.api_gateway.presigned_url_route
+}
+
+output "upload_status_endpoint" {
+  description = "Base URL for upload status checking"
+  value       = module.api_gateway.upload_status_route
+}
+
+# Lambda outputs
+output "upload_handler_function_name" {
+  description = "Name of the upload handler Lambda function"
+  value       = module.lambda.upload_handler_function_name
+}
+
+output "intent_parser_function_name" {
+  description = "Name of the intent parser Lambda function"
+  value       = module.lambda.intent_parser_function_name
+}
+
+# Bedrock Agent outputs
+output "supervisor_agent_id" {
+  description = "ID of the supervisor Bedrock agent"
+  value       = module.bedrock.supervisor_agent_id
+}
+
+output "supervisor_agent_alias_id" {
+  description = "Alias ID of the supervisor Bedrock agent"
+  value       = module.bedrock.supervisor_agent_alias_id
 }

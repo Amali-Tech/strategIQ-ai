@@ -1,32 +1,31 @@
+# Api-gateway Module Outputs
+
+output "api_gateway_id" {
+  description = "ID of the API Gateway"
+  value       = aws_apigatewayv2_api.main.id
+}
+
+output "api_gateway_endpoint" {
+  description = "Endpoint URL of the API Gateway"
+  value       = aws_apigatewayv2_api.main.api_endpoint
+}
+
 output "api_gateway_url" {
-  description = "API Gateway HTTP API URL"
-  value       = aws_apigatewayv2_api.bedrock_api.api_endpoint
+  description = "Full URL of the API Gateway with stage"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}"
 }
 
-output "api_gateway_stage_url" {
-  description = "API Gateway stage URL"
-  value       = "${aws_apigatewayv2_api.bedrock_api.api_endpoint}/${aws_apigatewayv2_stage.bedrock_api_stage.name}"
+output "presigned_url_route" {
+  description = "Full URL for presigned URL generation endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}/api/upload/presigned-url"
 }
 
-output "intent_parser_function_name" {
-  description = "Intent parser Lambda function name"
-  value       = aws_lambda_function.intent_parser.function_name
+output "upload_status_route" {
+  description = "Base URL for upload status checking endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}/api/upload"
 }
 
-output "intent_parser_function_arn" {
-  description = "Intent parser Lambda function ARN"
-  value       = aws_lambda_function.intent_parser.arn
-}
-
-output "api_routes" {
-  description = "Available API routes"
-  value = {
-    campaigns              = "POST /campaigns"
-    cultural_analysis      = "POST /cultural-analysis"
-    market_analysis        = "POST /market-analysis"
-    sentiment_analysis     = "POST /sentiment-analysis"
-    image_analysis         = "POST /image-analysis"
-    translate              = "POST /translate"
-    comprehensive_campaign = "POST /comprehensive-campaign"
-  }
+output "api_gateway_arn" {
+  description = "ARN of the API Gateway"
+  value       = aws_apigatewayv2_api.main.arn
 }

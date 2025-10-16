@@ -1,0 +1,37 @@
+{
+  "api_gateway_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://a5s7rnwjm0.execute-api.eu-west-1.amazonaws.com/dev"
+  },
+  "presigned_url_endpoint": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://a5s7rnwjm0.execute-api.eu-west-1.amazonaws.com/dev/api/upload/presigned-url"
+  },
+  "s3_bucket_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:s3:::degenerals-mi-dev-images"
+  },
+  "s3_bucket_domain_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "degenerals-mi-dev-images.s3.amazonaws.com"
+  },
+  "s3_bucket_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "degenerals-mi-dev-images"
+  },
+  "upload_handler_function_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "degenerals-mi-dev-upload-handler"
+  },
+  "upload_status_endpoint": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://a5s7rnwjm0.execute-api.eu-west-1.amazonaws.com/dev/api/upload"
+  }
+}
