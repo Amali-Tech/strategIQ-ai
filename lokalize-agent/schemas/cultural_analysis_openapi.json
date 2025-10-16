@@ -1,0 +1,125 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Cultural Analysis API",
+    "version": "1.0.0",
+    "description": "API for analyzing marketing content cultural appropriateness"
+  },
+  "paths": {
+    "/analyze": {
+      "post": {
+        "summary": "Analyze content for cultural appropriateness",
+        "description": "Analyzes marketing content for cultural sensitivity and appropriateness in target locale",
+        "operationId": "analyzeCulturalContent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ad_content": {
+                    "type": "string",
+                    "description": "The marketing content to analyze"
+                  },
+                  "target_locale": {
+                    "type": "string",
+                    "description": "Target locale/market (e.g., 'Japan', 'Germany', 'Brazil')"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "image",
+                      "video",
+                      "social_media",
+                      "email",
+                      "web_ad"
+                    ],
+                    "default": "text",
+                    "description": "Type of content being analyzed"
+                  },
+                  "brand_guidelines": {
+                    "type": "string",
+                    "description": "Brand guidelines or voice requirements (optional)"
+                  }
+                },
+                "required": ["ad_content", "target_locale"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cultural analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cultural_score": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 10,
+                      "description": "Cultural appropriateness score (1-10, higher is better)"
+                    },
+                    "analysis_summary": {
+                      "type": "string",
+                      "description": "Brief summary of the cultural analysis"
+                    },
+                    "cultural_issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "issue": {
+                            "type": "string",
+                            "description": "Description of the cultural issue"
+                          },
+                          "severity": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "Severity level of the issue"
+                          },
+                          "explanation": {
+                            "type": "string",
+                            "description": "Detailed explanation of why this is an issue"
+                          }
+                        }
+                      }
+                    },
+                    "recommendations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "recommendation": {
+                            "type": "string",
+                            "description": "Specific actionable recommendation"
+                          },
+                          "priority": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "Priority level of the recommendation"
+                          },
+                          "rationale": {
+                            "type": "string",
+                            "description": "Reasoning behind the recommendation"
+                          }
+                        }
+                      }
+                    },
+                    "needs_regeneration": {
+                      "type": "boolean",
+                      "description": "Whether the content needs to be regenerated for better cultural fit"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,15 +1,19 @@
-# Example Terraform Variables
+# Example Terraform Variables for Lokalize Multi-Agent System
 # Copy this file to terraform.tfvars and fill in your values
 
 # AWS Configuration
-aws_region = "eu-west-1"
+aws_region = "eu-west-1"  # Ensure Bedrock is available in this region
 
 # Project Configuration
-project_name = "aws-ai-hackathon"
+project_name = "lokalize"
 environment  = "dev"
 
-# API Keys (Required)
-youtube_api_key = "YOUR_YOUTUBE_API_KEY_HERE"
+# Multi-Agent System Configuration
+# The module will use these Claude models by default:
+# - Supervisor Agent: Claude Sonnet (complex orchestration)
+# - Campaign Generation Agent: Claude Sonnet (creative campaign development)
+# - Cultural Analysis Agent: Claude Sonnet (nuanced cultural analysis)
+# - Sentiment Analysis Agent: Claude Haiku (fast sentiment processing)
 
-# AI/ML Configuration
-bedrock_model_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+# Note: Ensure you have access to Claude models through the AWS Bedrock console
+# You may need to request access to Claude models through the AWS Bedrock console

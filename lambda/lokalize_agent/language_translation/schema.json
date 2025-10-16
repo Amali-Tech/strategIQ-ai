@@ -1,0 +1,259 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Lokalize Agent - Language Translation API",
+    "version": "1.0.0",
+    "description": "API for translating marketing content while preserving brand voice and cultural context"
+  },
+  "paths": {
+    "/translate-marketing-content": {
+      "post": {
+        "summary": "Translate marketing content to target language",
+        "description": "Translates marketing content while maintaining brand voice, tone, and cultural appropriateness for the target market",
+        "operationId": "translate_marketing_content",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "Original marketing content to translate"
+                  },
+                  "source_language": {
+                    "type": "string",
+                    "description": "Source language code (e.g., 'en', 'es', 'fr')"
+                  },
+                  "target_language": {
+                    "type": "string",
+                    "description": "Target language code (e.g., 'en', 'es', 'fr')"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "headline",
+                      "body_text",
+                      "cta",
+                      "tagline",
+                      "social_post",
+                      "email_subject"
+                    ],
+                    "description": "Type of marketing content"
+                  },
+                  "brand_voice": {
+                    "type": "object",
+                    "properties": {
+                      "tone": {
+                        "type": "string",
+                        "enum": [
+                          "professional",
+                          "casual",
+                          "friendly",
+                          "authoritative",
+                          "playful"
+                        ],
+                        "description": "Brand tone to maintain"
+                      },
+                      "personality": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Brand personality traits"
+                      },
+                      "key_messages": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Key brand messages to preserve"
+                      }
+                    }
+                  },
+                  "target_market": {
+                    "type": "object",
+                    "properties": {
+                      "region": {
+                        "type": "string",
+                        "description": "Target geographic region"
+                      },
+                      "demographic": {
+                        "type": "string",
+                        "description": "Target demographic"
+                      },
+                      "cultural_context": {
+                        "type": "string",
+                        "description": "Specific cultural context considerations"
+                      }
+                    }
+                  },
+                  "translation_preferences": {
+                    "type": "object",
+                    "properties": {
+                      "formality_level": {
+                        "type": "string",
+                        "enum": [
+                          "very_formal",
+                          "formal",
+                          "neutral",
+                          "informal",
+                          "very_informal"
+                        ],
+                        "description": "Desired formality level"
+                      },
+                      "preserve_brand_terms": {
+                        "type": "boolean",
+                        "description": "Whether to preserve specific brand terminology"
+                      },
+                      "localize_currency": {
+                        "type": "boolean",
+                        "description": "Whether to localize currency and numbers"
+                      },
+                      "alternative_versions": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5,
+                        "description": "Number of alternative translations to provide"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "content",
+                  "source_language",
+                  "target_language",
+                  "content_type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Content translated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success", "error"]
+                    },
+                    "translation_results": {
+                      "type": "object",
+                      "properties": {
+                        "source_language": {
+                          "type": "string",
+                          "description": "Source language identifier"
+                        },
+                        "target_language": {
+                          "type": "string",
+                          "description": "Target language identifier"
+                        },
+                        "original_text": {
+                          "type": "string",
+                          "description": "Original text for reference"
+                        },
+                        "translated_text": {
+                          "type": "string",
+                          "description": "Primary translated text"
+                        },
+                        "translation_quality": {
+                          "type": "object",
+                          "properties": {
+                            "accuracy_score": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Translation accuracy score (0-1)"
+                            },
+                            "fluency_score": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Language fluency score (0-1)"
+                            },
+                            "cultural_appropriateness": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Cultural appropriateness score (0-1)"
+                            },
+                            "brand_consistency": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Brand consistency score (0-1)"
+                            }
+                          }
+                        },
+                        "linguistic_analysis": {
+                          "type": "object",
+                          "properties": {
+                            "tone": {
+                              "type": "string",
+                              "description": "Detected/maintained tone"
+                            },
+                            "formality_level": {
+                              "type": "string",
+                              "description": "Formality level used"
+                            },
+                            "target_audience": {
+                              "type": "string",
+                              "description": "Identified target audience"
+                            },
+                            "key_terms_preserved": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Brand terms preserved in translation"
+                            },
+                            "cultural_adaptations": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Cultural adaptations made"
+                            }
+                          }
+                        },
+                        "alternatives": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "text": {
+                                "type": "string",
+                                "description": "Alternative translation"
+                              },
+                              "note": {
+                                "type": "string",
+                                "description": "Note about this alternative"
+                              }
+                            }
+                          },
+                          "description": "Alternative translation options"
+                        },
+                        "localization_recommendations": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Additional localization recommendations"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

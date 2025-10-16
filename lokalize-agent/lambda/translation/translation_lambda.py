@@ -3,6 +3,7 @@ import json
 import boto3
 import os
 import logging
+from optimized_lambda_base import invoke_model_optimized, create_bedrock_response, get_cached_prompt_template
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -18,16 +19,18 @@ def lambda_handler(event, context):
         if 'requestBody' in event and 'content' in event['requestBody']:
             content = event['requestBody']['content']
             if isinstance(content, dict):
-                content_to_translate = content.get('content', '')
+                source_content = content.get('content', '')
                 target_language = content.get('target_language', '')
-                source_language = content.get('source_language', 'en')
-                content_type = content.get('content_type', 'marketing_copy')
+                content_type = content.get('content_type', 'text')
+                preserve_formatting = content.get('preserve_formatting', True)
+                brand_voice = content.get('brand_voice', '')
             else:
                 params = json.loads(content) if isinstance(content, str) else content
-                content_to_translate = params.get('content', '')
+                source_content = params.get('content', '')
                 target_language = params.get('target_language', '')
-                source_language = params.get('source_language', 'en')
-                content_type = params.get('content_type', 'marketing_copy')
+                content_type = params.get('content_type', 'text')
+                preserve_formatting = params.get('preserve_formatting', True)
+                brand_voice = params.get('brand_voice', '')
         else:
             body = event.get('body', '{}')
             if isinstance(body, str):
@@ -35,180 +38,117 @@ def lambda_handler(event, context):
             else:
                 params = body
 
-            content_to_translate = params.get('content', '')
+            source_content = params.get('content', '')
             target_language = params.get('target_language', '')
-            source_language = params.get('source_language', 'en')
-            content_type = params.get('content_type', 'marketing_copy')
+            content_type = params.get('content_type', 'text')
+            preserve_formatting = params.get('preserve_formatting', True)
+            brand_voice = params.get('brand_voice', '')
 
-        logger.info(f"Translating from {source_language} to {target_language}")
+        logger.info(f"Translating {content_type} to {target_language}")
 
         # Perform translation
-        translation_result = translate_with_nova(
-            content_to_translate, target_language, source_language, content_type
+        translation_result = translate_content_with_nova(
+            source_content, target_language, content_type, preserve_formatting, brand_voice
         )
 
         # Return in Bedrock Agent format
-        bedrock_response = {
-            "messageVersion": "1.0",
-            "response": {
-                "actionGroup": event.get('actionGroup', 'Translation'),
-                "apiPath": event.get('apiPath', '/translate'),
-                "httpMethod": event.get('httpMethod', 'POST'),
-                "httpStatusCode": 200,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps(translation_result)
-                    }
-                }
-            }
-        }
-
-        logger.info("Translation completed successfully")
-        return bedrock_response
+        return create_bedrock_response(event, translation_result)
 
     except Exception as e:
         logger.error(f"Error in translation: {str(e)}")
 
         error_response = {
-            "messageVersion": "1.0",
-            "response": {
-                "actionGroup": event.get('actionGroup', 'Translation'),
-                "apiPath": event.get('apiPath', '/translate'),
-                "httpMethod": event.get('httpMethod', 'POST'),
-                "httpStatusCode": 500,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps({
-                            "error": str(e),
-                            "translated_content": "Translation failed due to technical error",
-                            "translation_notes": [],
-                            "cultural_adaptations": [],
-                            "quality_score": 0.0
-                        })
-                    }
-                }
-            }
+            "error": str(e),
+            "translated_content": "Translation failed due to technical error",
+            "quality_score": 0.0,
+            "translation_notes": ["Technical error occurred during translation"],
+            "confidence_level": "low"
         }
 
-        return error_response
+        return create_bedrock_response(event, error_response, 500)
 
 
-def translate_with_nova(
-        content: str,
+def translate_content_with_nova(
+        source_content: str,
         target_language: str,
-        source_language: str,
-        content_type: str
+        content_type: str,
+        preserve_formatting: bool,
+        brand_voice: str
 ) -> dict:
-    """Translate content using Amazon Nova Pro"""
+    """Translate content using Amazon Nova Pro with optimized prompts"""
 
-    if not content or not target_language:
+    if not source_content or not target_language:
         return {
-            "translated_content": "Unable to translate: missing content or target language",
-            "translation_notes": [],
-            "cultural_adaptations": ["Provide content and target language"],
-            "quality_score": 0.0
+            "translated_content": "Unable to translate: missing source content or target language",
+            "quality_score": 0.0,
+            "translation_notes": ["Provide complete source content and target language"],
+            "confidence_level": "low"
         }
 
-    bedrock_runtime = boto3.client('bedrock-runtime')
-    model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+    # Build optimized translation prompt
+    formatting_instruction = "Preserve original formatting, structure, and style." if preserve_formatting else "Adapt formatting for target language conventions."
+    brand_instruction = f"Maintain brand voice: {brand_voice}" if brand_voice else "Maintain original tone and style."
 
-    translation_prompt = f"""You are an expert translator specializing in marketing content. Translate this {content_type} from {source_language} to {target_language}.
+    translation_prompt = f"""Translate this {content_type} to {target_language}. {formatting_instruction} {brand_instruction}
 
-CONTENT TO TRANSLATE:
-{content}
+SOURCE CONTENT:
+{source_content}
 
-SOURCE LANGUAGE: {source_language}
 TARGET LANGUAGE: {target_language}
-CONTENT TYPE: {content_type}
 
-Provide a culturally-appropriate translation that:
-1. Preserves marketing intent and impact
-2. Adapts to cultural communication styles
-3. Uses appropriate formality level
-4. Maintains brand voice while localizing
+Requirements:
+- Accurate, culturally appropriate translation
+- Maintain marketing effectiveness
+- Preserve key messaging and calls-to-action
+- Use native-speaker level fluency
 
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON:
 {{
-    "translated_content": "<the translated content>",
-    "translation_notes": [
-        {{"original_phrase": "<phrase>", "translated_phrase": "<translation>", "note": "<explanation>"}}
-    ],
-    "cultural_adaptations": ["<adaptation 1>", "<adaptation 2>"],
-    "quality_score": <number between 1-10>
+    "translated_content": "<complete translation>",
+    "quality_score": <1-10 rating>,
+    "translation_notes": ["<any important notes>"],
+    "confidence_level": "low|medium|high"
 }}"""
 
-    body = json.dumps({
-        "messages": [
-            {
-                "role": "user",
-                "content": [{"text": translation_prompt}]
-            }
-        ],
-        "inferenceConfig": {
-            "maxTokens": 2000,
-            "temperature": 0.5
-        }
-    })
-
     try:
-        response = bedrock_runtime.invoke_model(
-            modelId=model_id,
-            body=body,
-            contentType='application/json'
-        )
+        result = invoke_model_optimized(translation_prompt, max_tokens=1500)
+        
+        # Validate required fields
+        required_fields = ['translated_content', 'quality_score', 'confidence_level']
+        for field in required_fields:
+            if field not in result:
+                result[field] = get_default_translation_value(field)
 
-        result = json.loads(response['body'].read())
+        # Ensure arrays exist
+        if 'translation_notes' not in result:
+            result['translation_notes'] = []
 
-        if 'output' in result and 'message' in result['output']:
-            content = result['output']['message'].get('content', [])
-            if content and len(content) > 0:
-                content_text = content[0].get('text', '{}')
-            else:
-                raise Exception("No content in Nova response")
-        else:
-            raise Exception("No output message in Nova response")
-
-        try:
-            parsed_result = json.loads(content_text)
-
-            # Validate required fields
-            if 'translated_content' not in parsed_result:
-                parsed_result['translated_content'] = f"[Translated to {target_language}] {content}"
-            if 'quality_score' not in parsed_result:
-                parsed_result['quality_score'] = 7.0
-
-            # Ensure arrays exist
-            if 'translation_notes' not in parsed_result:
-                parsed_result['translation_notes'] = []
-            if 'cultural_adaptations' not in parsed_result:
-                parsed_result['cultural_adaptations'] = []
-
-            return parsed_result
-
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}")
-            return create_translation_fallback(content, target_language, str(e))
+        return result
 
     except Exception as e:
-        logger.error(f"Error invoking Nova: {e}")
-        return create_translation_fallback(content, target_language, str(e))
+        logger.error(f"Error in translation: {e}")
+        return create_fallback_translation_response(target_language, str(e))
 
 
-def create_translation_fallback(content: str, target_language: str, error_msg: str) -> dict:
-    """Create fallback response for translation"""
+def get_default_translation_value(field: str):
+    """Get default values for required translation fields"""
+    defaults = {
+        'translated_content': 'Translation unavailable',
+        'quality_score': 5.0,
+        'confidence_level': 'medium'
+    }
+    return defaults.get(field, None)
+
+
+def create_fallback_translation_response(target_language: str, error_msg: str) -> dict:
+    """Create a fallback response when translation fails"""
     return {
-        'translated_content': f"[Translation to {target_language} attempted] {content}",
+        'translated_content': f'Translation to {target_language} encountered technical difficulties. Manual translation recommended.',
+        'quality_score': 3.0,
         'translation_notes': [
-            {
-                'original_phrase': 'entire content',
-                'translated_phrase': 'technical limitation',
-                'note': f'Automated translation failed: {error_msg}'
-            }
+            f'Automated translation failed: {error_msg}',
+            'Manual review and translation recommended'
         ],
-        'cultural_adaptations': [
-            'Manual translation recommended',
-            'Technical limitation in automated process'
-        ],
-        'quality_score': 4.0,
+        'confidence_level': 'low',
         'error_details': error_msg
     }

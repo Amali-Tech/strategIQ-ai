@@ -3,6 +3,7 @@ import json
 import boto3
 import os
 import logging
+from optimized_lambda_base import invoke_model_optimized, create_bedrock_response
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -51,49 +52,21 @@ def lambda_handler(event, context):
         )
 
         # Return in Bedrock Agent format
-        bedrock_response = {
-            "messageVersion": "1.0",
-            "response": {
-                "actionGroup": event.get('actionGroup', 'ContentRegeneration'),
-                "apiPath": event.get('apiPath', '/regenerate'),
-                "httpMethod": event.get('httpMethod', 'POST'),
-                "httpStatusCode": 200,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps(regeneration_result)
-                    }
-                }
-            }
-        }
-
         logger.info("Content regeneration completed successfully")
-        return bedrock_response
+        return create_bedrock_response(event, regeneration_result)
 
     except Exception as e:
         logger.error(f"Error in content regeneration: {str(e)}")
 
-        error_response = {
-            "messageVersion": "1.0",
-            "response": {
-                "actionGroup": event.get('actionGroup', 'ContentRegeneration'),
-                "apiPath": event.get('apiPath', '/regenerate'),
-                "httpMethod": event.get('httpMethod', 'POST'),
-                "httpStatusCode": 500,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps({
-                            "error": str(e),
-                            "regenerated_content": "Content regeneration failed due to technical error",
-                            "adaptations_made": [],
-                            "cultural_improvements": [],
-                            "brand_consistency_score": 0.0
-                        })
-                    }
-                }
-            }
+        error_result = {
+            "error": str(e),
+            "regenerated_content": "Content regeneration failed due to technical error",
+            "adaptations_made": [],
+            "cultural_improvements": [],
+            "brand_consistency_score": 0.0
         }
 
-        return error_response
+        return create_bedrock_response(event, error_result, 500)
 
 
 def regenerate_content_with_nova(
@@ -103,7 +76,7 @@ def regenerate_content_with_nova(
         brand_voice: str,
         content_type: str
 ) -> dict:
-    """Regenerate content using Amazon Nova Pro"""
+    """Regenerate content using Amazon Nova Pro with optimized prompts"""
 
     if not original_content or not target_locale:
         return {
@@ -113,21 +86,63 @@ def regenerate_content_with_nova(
             "brand_consistency_score": 0.0
         }
 
-    bedrock_runtime = boto3.client('bedrock-runtime')
-    model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+    regeneration_prompt = f"""Regenerate this {content_type} for {target_locale} with {adaptation_level} cultural adaptation.
 
-    regeneration_prompt = f"""You are an expert marketing localization specialist. Regenerate this {content_type} for {target_locale} with {adaptation_level} adaptation level.
+ORIGINAL: {original_content}
+TARGET: {target_locale}
+BRAND VOICE: {brand_voice if brand_voice else "Maintain original"}
 
-ORIGINAL CONTENT:
-{original_content}
+Requirements:
+- Culturally appropriate for {target_locale}
+- Maintain brand consistency
+- {adaptation_level} level of cultural adaptation
+- Preserve marketing effectiveness
 
-TARGET LOCALE: {target_locale}
-ADAPTATION LEVEL: {adaptation_level}
-BRAND VOICE: {brand_voice if brand_voice else "Maintain original brand voice"}
+Respond with ONLY valid JSON:
+{{
+    "regenerated_content": "<complete regenerated content>",
+    "adaptations_made": ["<list of changes made>"],
+    "cultural_improvements": ["<cultural enhancements>"],
+    "brand_consistency_score": <1-10 rating>
+}}"""
 
-Create a culturally-optimized version that:
-1. Respects {target_locale} cultural values and communication styles
-2. Avoids cultural taboos and sensitivities
-3. Maintains brand consistency
-4. Uses appropriate tone and messaging
-"""
+    try:
+        result = invoke_model_optimized(regeneration_prompt, max_tokens=1500)
+        
+        # Validate required fields
+        required_fields = ['regenerated_content', 'brand_consistency_score']
+        for field in required_fields:
+            if field not in result:
+                result[field] = get_default_regeneration_value(field)
+
+        # Ensure arrays exist
+        if 'adaptations_made' not in result:
+            result['adaptations_made'] = []
+        if 'cultural_improvements' not in result:
+            result['cultural_improvements'] = []
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in content regeneration: {e}")
+        return create_fallback_regeneration_response(target_locale, str(e))
+
+
+def get_default_regeneration_value(field: str):
+    """Get default values for required regeneration fields"""
+    defaults = {
+        'regenerated_content': 'Content regeneration unavailable',
+        'brand_consistency_score': 6.0
+    }
+    return defaults.get(field, None)
+
+
+def create_fallback_regeneration_response(target_locale: str, error_msg: str) -> dict:
+    """Create a fallback response when regeneration fails"""
+    return {
+        'regenerated_content': f'Content regeneration for {target_locale} encountered technical difficulties. Manual adaptation recommended.',
+        'adaptations_made': ['Technical error occurred'],
+        'cultural_improvements': [f'Automated regeneration failed: {error_msg}'],
+        'brand_consistency_score': 5.0,
+        'error_details': error_msg
+    }

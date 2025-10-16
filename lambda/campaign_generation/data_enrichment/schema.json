@@ -1,0 +1,176 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Campaign Generation - Data Enrichment API",
+    "version": "1.0.0",
+    "description": "API for enriching campaign data with demographic insights, behavioral patterns, and market trends"
+  },
+  "paths": {
+    "/enrich-campaign-data": {
+      "post": {
+        "summary": "Enrich campaign data with additional insights",
+        "description": "Enriches basic campaign information with demographic data, behavioral patterns, market trends, and personalization opportunities",
+        "operationId": "enrich_campaign_data",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the campaign"
+                  },
+                  "target_audience": {
+                    "type": "object",
+                    "properties": {
+                      "age_range": {
+                        "type": "string",
+                        "description": "Target age range (e.g., '25-34')"
+                      },
+                      "location": {
+                        "type": "string",
+                        "description": "Geographic target location"
+                      },
+                      "interests": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Target audience interests"
+                      }
+                    }
+                  },
+                  "product_category": {
+                    "type": "string",
+                    "description": "Product or service category"
+                  },
+                  "campaign_objectives": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "awareness",
+                        "engagement",
+                        "conversion",
+                        "retention"
+                      ]
+                    },
+                    "description": "Primary campaign objectives"
+                  },
+                  "budget_range": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high"],
+                    "description": "Campaign budget range"
+                  }
+                },
+                "required": [
+                  "campaign_id",
+                  "target_audience",
+                  "product_category"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Campaign data enriched successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success", "error"]
+                    },
+                    "enriched_data": {
+                      "type": "object",
+                      "properties": {
+                        "demographic_insights": {
+                          "type": "object",
+                          "properties": {
+                            "age_groups": {
+                              "type": "object",
+                              "description": "Age group distribution percentages"
+                            },
+                            "gender_distribution": {
+                              "type": "object",
+                              "description": "Gender distribution percentages"
+                            },
+                            "income_brackets": {
+                              "type": "object",
+                              "description": "Income bracket distribution"
+                            }
+                          }
+                        },
+                        "behavioral_patterns": {
+                          "type": "object",
+                          "properties": {
+                            "preferred_channels": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Preferred communication channels"
+                            },
+                            "engagement_times": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Optimal engagement times"
+                            },
+                            "content_preferences": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Preferred content types"
+                            }
+                          }
+                        },
+                        "market_trends": {
+                          "type": "object",
+                          "properties": {
+                            "trending_topics": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Current trending topics"
+                            },
+                            "seasonal_factors": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Relevant seasonal factors"
+                            },
+                            "competitive_landscape": {
+                              "type": "string",
+                              "description": "Competitive landscape assessment"
+                            }
+                          }
+                        },
+                        "personalization_opportunities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Identified personalization opportunities"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

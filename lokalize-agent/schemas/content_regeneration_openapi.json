@@ -1,0 +1,99 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Content Regeneration API",
+    "version": "1.0.0",
+    "description": "API for regenerating marketing content for different locales"
+  },
+  "paths": {
+    "/regenerate": {
+      "post": {
+        "summary": "Regenerate content for target locale",
+        "description": "Regenerates marketing content to be culturally appropriate for target locale",
+        "operationId": "regenerateContent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "original_content": {
+                    "type": "string",
+                    "description": "The original marketing content to regenerate"
+                  },
+                  "target_locale": {
+                    "type": "string",
+                    "description": "Target locale/market (e.g., 'Japan', 'Germany', 'Brazil')"
+                  },
+                  "adaptation_level": {
+                    "type": "string",
+                    "enum": ["light", "moderate", "heavy"],
+                    "default": "moderate",
+                    "description": "Level of cultural adaptation required"
+                  },
+                  "brand_voice": {
+                    "type": "string",
+                    "description": "Brand voice and tone requirements (optional)"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "social_media",
+                      "email",
+                      "web_ad",
+                      "print_ad",
+                      "video_script",
+                      "full_ad"
+                    ],
+                    "default": "full_ad",
+                    "description": "Type of content being regenerated"
+                  }
+                },
+                "required": ["original_content", "target_locale"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Content regeneration completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "regenerated_content": {
+                      "type": "string",
+                      "description": "The culturally adapted content"
+                    },
+                    "adaptations_made": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "List of specific adaptations made to the content"
+                    },
+                    "cultural_improvements": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "List of cultural improvements implemented"
+                    },
+                    "brand_consistency_score": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 10,
+                      "description": "Score indicating how well brand consistency was maintained (1-10)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
