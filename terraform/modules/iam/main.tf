@@ -104,3 +104,10 @@ resource "aws_iam_role_policy_attachment" "lambda_bedrock_policy" {
   role       = aws_iam_role.lambda_execution_role.name
   policy_arn = aws_iam_policy.bedrock_invoke_policy.arn
 }
+
+# Attach campaign tracking policy to Lambda role (if provided)
+resource "aws_iam_role_policy_attachment" "lambda_campaign_tracking_policy" {
+  count      = var.campaign_tracking_policy_arn != "" ? 1 : 0
+  role       = aws_iam_role.lambda_execution_role.name
+  policy_arn = var.campaign_tracking_policy_arn
+}

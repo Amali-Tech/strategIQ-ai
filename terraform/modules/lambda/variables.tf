@@ -28,6 +28,24 @@ variable "supervisor_agent_id" {
 
 variable "supervisor_agent_alias_id" {
   description = "Alias ID of the Bedrock supervisor agent"
-  type        = string  
-  default     = "TSTALIASID"  # Default test alias
+  type        = string
+  default     = ""  # Will be populated once Bedrock agent alias is created
+}
+
+variable "campaign_status_table_name" {
+  description = "Name of the campaign status DynamoDB table"
+  type        = string
+  default     = ""
+}
+
+variable "campaign_events_bus_name" {
+  description = "Name of the campaign events EventBridge bus"
+  type        = string
+  default     = ""
+}
+
+variable "visual_asset_queue_arn" {
+  description = "ARN of the visual asset generation SQS queue"
+  type        = string
+  default     = ""
 }

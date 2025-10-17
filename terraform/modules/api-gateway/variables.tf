@@ -42,3 +42,15 @@ variable "intent_parser_function_name" {
   type        = string
   default     = ""  # Optional until intent parser is deployed
 }
+
+variable "campaign_status_invoke_arn" {
+  description = "Invoke ARN of the campaign status Lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "campaign_status_function_name" {
+  description = "Name of the campaign status Lambda function"
+  type        = string
+  default     = ""
+}

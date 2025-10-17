@@ -52,6 +52,18 @@ variable "cultural_intelligence_lambda_arn" {
   default     = ""  # Will be populated when Lambda is created
 }
 
+variable "sentiment_analysis_lambda_arn" {
+  description = "ARN of the sentiment analysis Lambda function"
+  type        = string
+  default     = ""  # Will be populated when Lambda is created
+}
+
+variable "visual_asset_generator_lambda_arn" {
+  description = "ARN of the visual asset generator Lambda function"
+  type        = string
+  default     = ""  # Will be populated when Lambda is created
+}
+
 variable "bedrock_model_id" {
   description = "Bedrock model ID to use for the agent"
   type        = string

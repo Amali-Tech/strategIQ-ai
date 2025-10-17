@@ -1,0 +1,441 @@
+{
+  "api_base_url": "https://a5s7rnwjm0.execute-api.eu-west-1.amazonaws.com/dev",
+  "version": "2.1.0",
+  "last_updated": "2025-10-17",
+  "bedrock_agent_id": "PETCCX2JY2",
+  "bedrock_agent_alias_id": "A5TWSM3MKF",
+
+  "frontend_integration_prompt": {
+    "title": "AI Marketing Campaign API Integration Guide",
+    "description": "Complete prompt for frontend developers to integrate with the event-driven AI marketing campaign generation API",
+    "prompt": "I need to integrate with an AI-powered marketing campaign generation API that has two workflow types: basic campaigns (immediate) and comprehensive campaigns (async with visual assets). Here's the complete integration guide:\n\n## API Overview\nBase URL: https://a5s7rnwjm0.execute-api.eu-west-1.amazonaws.com/dev\n\n## Workflow Types\n1. **Basic Campaign** (/api/campaigns) - Fast, no visual assets, immediate completion\n2. **Comprehensive Campaign** (/api/comprehensive-campaign) - Enhanced with cultural analysis, async visual asset generation\n\n## Integration Steps\n\n### Step 1: Image Upload Flow\n```javascript\n// 1. Get presigned URL\nconst getPresignedUrl = async (fileName, fileType) => {\n  const response = await fetch('/api/upload/presigned-url', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ fileName, fileType })\n  });\n  return response.json(); // Returns: { uploadUrl, imageHash, imageKey, uploadId }\n};\n\n// 2. Upload file to S3\nconst uploadFile = async (uploadUrl, file) => {\n  await fetch(uploadUrl, {\n    method: 'PUT',\n    headers: { 'Content-Type': file.type },\n    body: file\n  });\n};\n\n// 3. Construct image URLs\nconst imageUrl = `https://degenerals-mi-dev-images.s3.eu-west-1.amazonaws.com/${imageKey}`;\n```\n\n### Step 2: Campaign Creation\n```javascript\n// Basic Campaign (immediate completion)\nconst createBasicCampaign = async (campaignData) => {\n  const response = await fetch('/api/campaigns', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      product: {\n        name: 'Product Name',\n        description: 'Product description',\n        imageUrl: imageUrl,\n        imageKey: imageKey\n      },\n      target_audience: 'Target audience description',\n      platform_preferences: ['Instagram', 'TikTok', 'YouTube'],\n      budget_range: '$5,000 - $15,000',\n      target_markets: ['United States', 'Germany', 'Japan'],\n      campaign_objectives: ['brand_awareness', 'product_launch']\n    })\n  });\n  return response.json(); // Returns: { campaign_id, status: 'completed', campaign_data }\n};\n\n// Comprehensive Campaign (async with placeholders)\nconst createComprehensiveCampaign = async (campaignData) => {\n  const response = await fetch('/api/comprehensive-campaign', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify(campaignData) // Same structure as basic\n  });\n  return response.json(); // Returns: { campaign_id, status: 'awaiting_assets', campaign_data }\n};\n```\n\n### Step 3: Status Tracking & Polling\n```javascript\n// Poll campaign status for comprehensive campaigns\nconst pollCampaignStatus = async (campaignId, onUpdate) => {\n  const poll = async () => {\n    try {\n      const response = await fetch(`/api/campaigns/${campaignId}/status`);\n      const status = await response.json();\n      onUpdate(status);\n      \n      // Continue polling if still processing\n      if (['processing', 'awaiting_assets'].includes(status.status)) {\n        setTimeout(poll, 5000); // Poll every 5 seconds\n      }\n    } catch (error) {\n      console.error('Status polling error:', error);\n      setTimeout(poll, 10000); // Retry after 10 seconds on error\n    }\n  };\n  poll();\n};\n\n// Get all campaigns with optional status filtering\nconst getCampaigns = async (statusFilter = null) => {\n  const url = statusFilter \n    ? `/api/campaigns/status?status=${statusFilter}`\n    : '/api/campaigns/status';\n  const response = await fetch(url);\n  return response.json(); // Returns: { campaigns: [...], count: number }\n};\n```\n\n### Step 4: Handling Asset Placeholders\n```javascript\n// Replace placeholders in comprehensive campaign content\nconst processPlaceholders = (content, assets) => {\n  if (!assets) return content;\n  \n  let processedContent = content;\n  \n  // Replace social media image placeholders\n  if (assets.social_images) {\n    processedContent = processedContent.replace(\n      /{{PLACEHOLDER_SOCIAL_POST_IMAGE}}/g,\n      `<img src=\"${assets.social_images[0]?.url}\" alt=\"Social Media Image\" />`\n    );\n  }\n  \n  // Replace banner placeholders\n  if (assets.ad_creatives) {\n    processedContent = processedContent.replace(\n      /{{PLACEHOLDER_PRODUCT_BANNER}}/g,\n      `<img src=\"${assets.ad_creatives[0]?.url}\" alt=\"Product Banner\" />`\n    );\n  }\n  \n  // Replace video placeholders\n  if (assets.video_scripts) {\n    processedContent = processedContent.replace(\n      /{{PLACEHOLDER_YOUTUBE_REVIEW}}/g,\n      `<video src=\"${assets.video_scripts[0]?.url}\" controls></video>`\n    );\n  }\n  \n  return processedContent;\n};\n```\n\n### Step 5: Complete Integration Example\n```javascript\nconst IntegratedCampaignFlow = {\n  async createCampaign(file, campaignData, isComprehensive = false) {\n    try {\n      // 1. Upload image\n      const { uploadUrl, imageKey } = await getPresignedUrl(file.name, file.type);\n      await uploadFile(uploadUrl, file);\n      \n      // 2. Create campaign\n      const campaignPayload = {\n        ...campaignData,\n        product: {\n          ...campaignData.product,\n          imageUrl: `https://degenerals-mi-dev-images.s3.eu-west-1.amazonaws.com/${imageKey}`,\n          imageKey\n        }\n      };\n      \n      const campaign = isComprehensive \n        ? await createComprehensiveCampaign(campaignPayload)\n        : await createBasicCampaign(campaignPayload);\n      \n      // 3. Handle based on campaign type\n      if (campaign.status === 'completed') {\n        // Basic campaign - show results immediately\n        return { campaign, needsPolling: false };\n      } else if (campaign.status === 'awaiting_assets') {\n        // Comprehensive campaign - start polling\n        this.startStatusPolling(campaign.campaign_id);\n        return { campaign, needsPolling: true };\n      }\n    } catch (error) {\n      console.error('Campaign creation failed:', error);\n      throw error;\n    }\n  },\n  \n  startStatusPolling(campaignId) {\n    pollCampaignStatus(campaignId, (status) => {\n      console.log('Campaign status update:', status);\n      \n      if (status.status === 'assets_completed') {\n        // Process final campaign with real assets\n        const finalContent = processPlaceholders(\n          status.result_data.content,\n          status.visual_assets\n        );\n        this.onCampaignComplete({ ...status, processed_content: finalContent });\n      }\n    });\n  },\n  \n  onCampaignComplete(campaign) {\n    // Handle completed campaign in UI\n    console.log('Campaign completed with assets:', campaign);\n  }\n};\n```\n\n## Status Meanings\n- **processing**: Campaign being analyzed by AI\n- **completed**: Basic campaign finished (no assets)\n- **awaiting_assets**: Comprehensive campaign analysis done, assets generating\n- **assets_completed**: All visual assets ready\n- **failed**: Error occurred\n\n## Error Handling\n- Always implement retry logic for network requests\n- Handle timeout scenarios gracefully\n- Show appropriate loading states during async operations\n- Provide fallback content when placeholders can't be replaced\n\n## Performance Tips\n- Use debouncing for status polling\n- Implement caching for campaign lists\n- Show placeholder content immediately for comprehensive campaigns\n- Use progressive loading for visual assets\n\nThis API uses Claude 3 Haiku for fast, cost-effective campaign generation with EventBridge/SQS for reliable async visual asset processing."
+  },
+
+  "ai_orchestration": {
+    "bedrock_agent": {
+      "name": "AI Marketing Campaign Supervisor",
+      "model": "Anthropic Claude 3 Haiku (anthropic.claude-3-haiku-20240307-v1:0)",
+      "action_groups": [
+        "image-analysis: Amazon Rekognition for product image analysis",
+        "data-enrichment: YouTube API for market trend insights",
+        "cultural-intelligence: Cross-cultural adaptation and market intelligence"
+      ],
+      "knowledge_base": "Cultural Intelligence Knowledge Base (XP9XRAELYG)",
+      "workflow_routes": {
+        "/campaigns": "Basic workflow: Image Analysis → Data Enrichment → Campaign Generation (NO visual assets)",
+        "/comprehensive-campaign": "Enhanced workflow: Image Analysis → Data Enrichment → Cultural Intelligence → Campaign with Asset Placeholders → Async Visual Asset Generation"
+      },
+      "async_architecture": {
+        "event_driven": "EventBridge + SQS + Lambda for async visual asset generation",
+        "campaign_tracking": "DynamoDB table for real-time campaign status monitoring",
+        "asset_placeholders": "Campaigns return with {{PLACEHOLDER_*}} tokens for frontend rendering"
+      }
+    }
+  },
+
+  "endpoints": {
+    "presigned_url": {
+      "path": "/api/upload/presigned-url",
+      "method": "POST",
+      "description": "Generate a presigned URL for uploading images to S3",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "payload": {
+        "required": {
+          "fileName": {
+            "type": "string",
+            "description": "Name of the file to upload",
+            "example": "product-image.jpg"
+          },
+          "fileType": {
+            "type": "string",
+            "description": "MIME type of the file",
+            "example": "image/jpeg",
+            "allowed_values": ["image/jpeg", "image/png", "image/jpg"]
+          }
+        }
+      },
+      "success_response": {
+        "status_code": 200,
+        "body": {
+          "uploadUrl": {
+            "type": "string",
+            "description": "Presigned URL for uploading the file to S3",
+            "example": "https://s3.eu-west-1.amazonaws.com/bucket/key?presigned-params"
+          },
+          "imageHash": {
+            "type": "string",
+            "description": "Unique hash identifier for the image",
+            "example": "b72d0b55-7f71-4a4e-b6b6-bd4f314cdd87"
+          },
+          "imageKey": {
+            "type": "string",
+            "description": "S3 object key for the uploaded image",
+            "example": "uploads/anonymous/20251017_120657_b72d0b55-7f71-4a4e-b6b6-bd4f314cdd87.jpg"
+          },
+          "uploadId": {
+            "type": "string",
+            "description": "Upload tracking identifier",
+            "example": "b72d0b55-7f71-4a4e-b6b6-bd4f314cdd87"
+          }
+        }
+      }
+    },
+
+    "basic_campaign_generation": {
+      "path": "/api/campaigns",
+      "method": "POST",
+      "description": "Create a basic marketing campaign with immediate completion (no visual assets generated)",
+      "workflow": "Image Analysis → Data Enrichment → Campaign Generation",
+      "features": [
+        "Product image analysis",
+        "Market trend data enrichment",
+        "Platform-specific campaign strategies",
+        "Immediate completion (30-60 seconds)",
+        "No visual asset generation"
+      ],
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "payload": {
+        "required": {
+          "product": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Premium Wireless Headphones"
+              },
+              "description": {
+                "type": "string",
+                "example": "High-quality wireless headphones with noise cancellation"
+              },
+              "imageUrl": {
+                "type": "string",
+                "description": "Full S3 URL of the uploaded product image",
+                "example": "https://degenerals-mi-dev-images.s3.eu-west-1.amazonaws.com/uploads/anonymous/20251017_120657_image.jpg"
+              },
+              "imageKey": {
+                "type": "string",
+                "description": "S3 object key from presigned URL response",
+                "example": "uploads/anonymous/20251017_120657_image.jpg"
+              }
+            }
+          },
+          "target_audience": {
+            "type": "string",
+            "example": "Young professionals and music enthusiasts aged 25-40"
+          },
+          "platform_preferences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["Instagram", "TikTok", "YouTube"]
+          },
+          "budget_range": {
+            "type": "string",
+            "example": "$5,000 - $15,000"
+          },
+          "target_markets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["United States", "Germany", "Japan"]
+          },
+          "campaign_objectives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["brand_awareness", "product_launch"]
+          }
+        }
+      },
+      "success_response": {
+        "status_code": 200,
+        "body": {
+          "campaign_id": {
+            "type": "string",
+            "example": "83f23ff7-11c3-4797-9437-38366b800c8d"
+          },
+          "status": {
+            "type": "string",
+            "value": "completed",
+            "description": "Basic campaigns complete immediately"
+          },
+          "message": {
+            "type": "string",
+            "example": "Basic campaign completed successfully."
+          },
+          "campaign_data": {
+            "type": "object",
+            "description": "Complete campaign strategy with platform-specific content",
+            "properties": {
+              "campaign_strategy": { "type": "object" },
+              "platform_content": { "type": "object" },
+              "visual_insights": { "type": "object" },
+              "market_trends": { "type": "object" },
+              "success_metrics": { "type": "object" }
+            }
+          }
+        }
+      },
+      "typical_response_time": "30-60 seconds"
+    },
+
+    "comprehensive_campaign_generation": {
+      "path": "/api/comprehensive-campaign",
+      "method": "POST",
+      "description": "Create a comprehensive marketing campaign with cultural analysis and async visual asset generation",
+      "workflow": "Image Analysis → Data Enrichment → Cultural Intelligence → Campaign with Placeholders → Async Visual Assets",
+      "features": [
+        "Product image analysis",
+        "Market trend data enrichment",
+        "Cultural intelligence and market adaptation",
+        "Platform-specific strategies per target market",
+        "Asset placeholder tokens for immediate rendering",
+        "Async visual asset generation via EventBridge + SQS"
+      ],
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "payload": {
+        "required": {
+          "product": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Premium Wireless Headphones"
+              },
+              "description": {
+                "type": "string",
+                "example": "High-quality wireless headphones with noise cancellation"
+              },
+              "imageUrl": {
+                "type": "string",
+                "example": "https://degenerals-mi-dev-images.s3.eu-west-1.amazonaws.com/uploads/anonymous/image.jpg"
+              },
+              "imageKey": {
+                "type": "string",
+                "example": "uploads/anonymous/image.jpg"
+              }
+            }
+          },
+          "target_audience": {
+            "type": "string",
+            "example": "Young professionals aged 25-40"
+          },
+          "platform_preferences": {
+            "type": "array",
+            "example": ["Instagram", "TikTok", "YouTube"]
+          },
+          "budget_range": { "type": "string", "example": "$5,000 - $15,000" },
+          "target_markets": {
+            "type": "array",
+            "example": ["United States", "Germany", "Japan"]
+          },
+          "campaign_objectives": {
+            "type": "array",
+            "example": ["brand_awareness", "product_launch"]
+          }
+        }
+      },
+      "success_response": {
+        "status_code": 200,
+        "body": {
+          "campaign_id": {
+            "type": "string",
+            "example": "acf395b0-aef9-4182-a5ab-8fcf0d2f9c3e"
+          },
+          "status": {
+            "type": "string",
+            "value": "awaiting_assets",
+            "description": "Analysis complete, visual assets generating async"
+          },
+          "message": {
+            "type": "string",
+            "example": "Comprehensive campaign analysis completed. Visual assets are being generated asynchronously."
+          },
+          "campaign_data": {
+            "type": "object",
+            "description": "Campaign strategy with cultural adaptations and asset placeholders",
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "Campaign strategy with placeholder tokens like {{PLACEHOLDER_SOCIAL_POST_IMAGE}}, {{PLACEHOLDER_PRODUCT_BANNER}}, {{PLACEHOLDER_YOUTUBE_REVIEW}}"
+              }
+            }
+          }
+        }
+      },
+      "typical_response_time": "30-60 seconds for analysis, visual assets generated asynchronously"
+    },
+
+    "campaign_status_list": {
+      "path": "/api/campaigns/status",
+      "method": "GET",
+      "description": "List all campaigns with their current status",
+      "headers": {},
+      "payload": {
+        "query_parameters": {
+          "status": {
+            "type": "string",
+            "required": false,
+            "description": "Filter campaigns by status",
+            "allowed_values": [
+              "processing",
+              "completed",
+              "awaiting_assets",
+              "assets_completed",
+              "failed"
+            ],
+            "example": "awaiting_assets"
+          }
+        }
+      },
+      "success_response": {
+        "status_code": 200,
+        "body": {
+          "campaigns": {
+            "type": "array",
+            "description": "List of campaigns with status information",
+            "items": {
+              "type": "object",
+              "properties": {
+                "campaign_id": {
+                  "type": "string",
+                  "example": "11493468-8eb3-4701-9a22-56ccd76aed20"
+                },
+                "status": { "type": "string", "example": "awaiting_assets" },
+                "progress": { "type": "number", "example": 75 },
+                "created_at": {
+                  "type": "string",
+                  "example": "2025-10-17T11:14:21.670744"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "example": "2025-10-17T11:14:44.371389"
+                },
+                "product_name": {
+                  "type": "string",
+                  "example": "SmartFit Tracker"
+                },
+                "has_visual_assets": { "type": "boolean", "example": false }
+              }
+            }
+          },
+          "count": { "type": "number", "example": 5 },
+          "status_filter": { "type": "string", "example": "awaiting_assets" }
+        }
+      }
+    },
+
+    "campaign_status_detail": {
+      "path": "/api/campaigns/{campaign_id}/status",
+      "method": "GET",
+      "description": "Get detailed status of a specific campaign including progress and generated assets",
+      "headers": {},
+      "payload": {
+        "path_parameters": {
+          "campaign_id": {
+            "type": "string",
+            "required": true,
+            "description": "Campaign ID from campaign creation response",
+            "example": "11493468-8eb3-4701-9a22-56ccd76aed20"
+          }
+        }
+      },
+      "success_response": {
+        "status_code": 200,
+        "body": {
+          "campaign_id": {
+            "type": "string",
+            "example": "11493468-8eb3-4701-9a22-56ccd76aed20"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current campaign status",
+            "allowed_values": [
+              "processing",
+              "completed",
+              "awaiting_assets",
+              "assets_completed",
+              "failed"
+            ],
+            "example": "awaiting_assets"
+          },
+          "progress": {
+            "type": "number",
+            "description": "Completion percentage (0-100)",
+            "example": 75
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-10-17T11:14:21.670744"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-10-17T11:14:44.371389"
+          },
+          "context_data": {
+            "type": "object",
+            "description": "Original campaign request data",
+            "properties": {
+              "product": { "type": "object" },
+              "target_audience": { "type": "string" },
+              "platform_preferences": { "type": "array" },
+              "budget_range": { "type": "string" },
+              "target_markets": { "type": "array" },
+              "campaign_objectives": { "type": "array" }
+            }
+          },
+          "result_data": {
+            "type": "object",
+            "description": "Campaign analysis results",
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "Campaign strategy content"
+              }
+            }
+          },
+          "visual_assets": {
+            "type": "object",
+            "description": "Generated visual assets (only present when status is 'assets_completed')",
+            "properties": {
+              "social_images": { "type": "array" },
+              "video_scripts": { "type": "array" },
+              "thumbnails": { "type": "array" },
+              "ad_creatives": { "type": "array" }
+            }
+          }
+        }
+      },
+      "error_response": {
+        "status_code": 404,
+        "body": {
+          "error": "Campaign not found"
+        }
+      }
+    }
+  },
+
+  "status_lifecycle": {
+    "processing": "Campaign being analyzed by AI agents",
+    "completed": "Basic campaign finished (no visual assets needed)",
+    "awaiting_assets": "Comprehensive campaign analysis complete, visual assets generating asynchronously",
+    "assets_completed": "All visual assets generated and ready for use",
+    "failed": "Error occurred during campaign processing"
+  },
+
+  "integration_notes": {
+    "cors": "API supports CORS for web applications",
+    "rate_limiting": "1000 requests/minute, 2000 burst limit",
+    "authentication": "Currently open API, authentication to be added",
+    "error_handling": "Standard HTTP status codes with descriptive error messages"
+  }
+}

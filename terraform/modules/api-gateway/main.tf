@@ -126,3 +126,40 @@ resource "aws_lambda_permission" "api_gateway_invoke_intent_parser" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*/*"
 }
+
+# Route: GET /api/campaigns/{campaign_id}/status
+resource "aws_apigatewayv2_route" "campaign_status_detail" {
+  count     = var.campaign_status_function_name != "" ? 1 : 0
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /api/campaigns/{campaign_id}/status"
+  target    = "integrations/${aws_apigatewayv2_integration.campaign_status[0].id}"
+}
+
+# Route: GET /api/campaigns/status (list campaigns)
+resource "aws_apigatewayv2_route" "campaign_status_list" {
+  count     = var.campaign_status_function_name != "" ? 1 : 0
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /api/campaigns/status"
+  target    = "integrations/${aws_apigatewayv2_integration.campaign_status[0].id}"
+}
+
+# Integration for campaign status
+resource "aws_apigatewayv2_integration" "campaign_status" {
+  count              = var.campaign_status_function_name != "" ? 1 : 0
+  api_id             = aws_apigatewayv2_api.main.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = var.campaign_status_invoke_arn
+  
+  payload_format_version = "2.0"
+}
+
+# Lambda permissions for API Gateway to invoke the campaign status function
+resource "aws_lambda_permission" "api_gateway_invoke_campaign_status" {
+  count         = var.campaign_status_function_name != "" ? 1 : 0
+  statement_id  = "AllowExecutionFromAPIGateway-CampaignStatus"
+  action        = "lambda:InvokeFunction"
+  function_name = var.campaign_status_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*/*"
+}

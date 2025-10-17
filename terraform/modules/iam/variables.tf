@@ -14,3 +14,9 @@ variable "s3_bucket_arn" {
   description = "ARN of the S3 bucket for Lambda permissions"
   type        = string
 }
+
+variable "campaign_tracking_policy_arn" {
+  description = "ARN of the campaign tracking policy"
+  type        = string
+  default     = ""
+}

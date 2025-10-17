@@ -224,8 +224,9 @@ resource "aws_lambda_function" "cultural_intelligence" {
 
   environment {
     variables = {
-      CULTURAL_KB_ID = var.cultural_intelligence_kb_id
-      MARKET_KB_ID = var.market_intelligence_kb_id
+      CULTURAL_INTELLIGENCE_KB_ID = var.cultural_intelligence_kb_id
+      CULTURAL_KB_ID = var.cultural_intelligence_kb_id  # Backward compatibility
+      MARKET_KB_ID = var.cultural_intelligence_kb_id    # Use same KB for both
       DYNAMODB_TABLE_NAME = aws_dynamodb_table.cultural_intelligence.name
     }
   }

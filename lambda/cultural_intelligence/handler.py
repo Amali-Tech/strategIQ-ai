@@ -1,7 +1,10 @@
 import json
 import boto3
+import os
 import uuid
+import traceback
 from datetime import datetime
+from decimal import Decimal
 from botocore.exceptions import ClientError
 
 # Initialize AWS clients
@@ -123,13 +126,13 @@ def handle_cultural_insights(parameters, context):
         query = f"Cultural adaptation guidelines for {campaign_type} campaign in {', '.join(target_markets)} markets for {product_category} products"
         
         # Query the cultural intelligence knowledge base
-        cultural_kb_id = get_cultural_kb_id()
-        cultural_insights = query_knowledge_base(cultural_kb_id, query)
+        kb_id = get_knowledge_base_id()
+        cultural_insights = query_knowledge_base(kb_id, query)
         
         # Generate insights record
-        insights_id = str(uuid.uuid4())
+        intelligence_id = str(uuid.uuid4())
         insights_record = {
-            'insights_id': insights_id,
+            'intelligence_id': intelligence_id,
             'target_markets': target_markets,
             'campaign_type': campaign_type,
             'product_category': product_category,
@@ -145,7 +148,7 @@ def handle_cultural_insights(parameters, context):
         
         # Return structured response
         return create_success_response({
-            'insights_id': insights_id,
+            'intelligence_id': intelligence_id,
             'target_markets': target_markets,
             'cultural_guidelines': parse_cultural_guidelines(cultural_insights),
             'adaptation_recommendations': generate_adaptation_recommendations(cultural_insights, target_markets),
@@ -173,9 +176,9 @@ def handle_market_intelligence(parameters, context):
         focus_query = f" focusing on {', '.join(focus_areas)}" if focus_areas else ""
         query = f"{intelligence_type} market intelligence for {target_market}{focus_query}"
         
-        # Query the market intelligence knowledge base
-        market_kb_id = get_market_kb_id()
-        market_intelligence = query_knowledge_base(market_kb_id, query)
+        # Query the cultural intelligence knowledge base (same as market intelligence)
+        kb_id = get_knowledge_base_id()
+        market_intelligence = query_knowledge_base(kb_id, query)
         
         # Generate intelligence record
         intelligence_id = str(uuid.uuid4())
@@ -225,15 +228,14 @@ def handle_content_adaptation(parameters, context):
         adaptations = {}
         
         for market in target_markets:
-            # Query both knowledge bases for comprehensive adaptation
+            # Query knowledge base for comprehensive adaptation
             cultural_query = f"Cultural adaptation guidelines for {content_type} content in {market}"
             market_query = f"Market-specific preferences for {content_type} content in {market}"
             
-            cultural_kb_id = get_cultural_kb_id()
-            market_kb_id = get_market_kb_id()
+            kb_id = get_knowledge_base_id()
             
-            cultural_guidelines = query_knowledge_base(cultural_kb_id, cultural_query)
-            market_preferences = query_knowledge_base(market_kb_id, market_query)
+            cultural_guidelines = query_knowledge_base(kb_id, cultural_query)
+            market_preferences = query_knowledge_base(kb_id, market_query)
             
             # Generate adaptation recommendations
             adaptations[market] = {
@@ -245,9 +247,9 @@ def handle_content_adaptation(parameters, context):
             }
         
         # Generate adaptation record
-        adaptation_id = str(uuid.uuid4())
+        intelligence_id = str(uuid.uuid4())
         adaptation_record = {
-            'adaptation_id': adaptation_id,
+            'intelligence_id': intelligence_id,
             'original_content': content,
             'target_markets': target_markets,
             'content_type': content_type,
@@ -262,7 +264,7 @@ def handle_content_adaptation(parameters, context):
         
         # Return structured response
         return create_success_response({
-            'adaptation_id': adaptation_id,
+            'intelligence_id': intelligence_id,
             'original_content': content,
             'target_markets': target_markets,
             'market_adaptations': adaptations,
@@ -542,12 +544,25 @@ def rank_adaptation_priority(adaptations):
 
 # DynamoDB and utility functions
 
+def convert_floats_to_decimals(obj):
+    """Convert all float values in a nested object to Decimal for DynamoDB compatibility."""
+    if isinstance(obj, list):
+        return [convert_floats_to_decimals(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_floats_to_decimals(value) for key, value in obj.items()}
+    elif isinstance(obj, float):
+        return Decimal(str(obj))
+    else:
+        return obj
+
 def save_insights_to_dynamodb(table_name, insights_record):
     """Save cultural insights to DynamoDB."""
     try:
+        # Convert floats to Decimals for DynamoDB compatibility
+        insights_record = convert_floats_to_decimals(insights_record)
         table = dynamodb.Table(table_name)
         table.put_item(Item=insights_record)
-        print(f"Saved insights record to DynamoDB: {insights_record['insights_id']}")
+        print(f"Saved insights record to DynamoDB: {insights_record['intelligence_id']}")
     except Exception as e:
         print(f"Error saving to DynamoDB: {str(e)}")
         raise
@@ -555,6 +570,8 @@ def save_insights_to_dynamodb(table_name, insights_record):
 def save_intelligence_to_dynamodb(table_name, intelligence_record):
     """Save market intelligence to DynamoDB."""
     try:
+        # Convert floats to Decimals for DynamoDB compatibility
+        intelligence_record = convert_floats_to_decimals(intelligence_record)
         table = dynamodb.Table(table_name)
         table.put_item(Item=intelligence_record)
         print(f"Saved intelligence record to DynamoDB: {intelligence_record['intelligence_id']}")
@@ -565,27 +582,27 @@ def save_intelligence_to_dynamodb(table_name, intelligence_record):
 def save_adaptation_to_dynamodb(table_name, adaptation_record):
     """Save content adaptation to DynamoDB."""
     try:
+        # Convert floats to Decimals for DynamoDB compatibility
+        adaptation_record = convert_floats_to_decimals(adaptation_record)
         table = dynamodb.Table(table_name)
         table.put_item(Item=adaptation_record)
-        print(f"Saved adaptation record to DynamoDB: {adaptation_record['adaptation_id']}")
+        print(f"Saved adaptation record to DynamoDB: {adaptation_record['intelligence_id']}")
     except Exception as e:
         print(f"Error saving to DynamoDB: {str(e)}")
         raise
 
-def get_cultural_kb_id():
-    """Get Cultural Intelligence Knowledge Base ID from environment variables."""
+def get_knowledge_base_id():
+    """Get Knowledge Base ID from environment variables."""
     import os
-    kb_id = os.environ.get('CULTURAL_KB_ID')
+    # Try multiple environment variable names for backward compatibility
+    kb_id = (os.environ.get('CULTURAL_INTELLIGENCE_KB_ID') or 
+             os.environ.get('CULTURAL_KB_ID') or 
+             os.environ.get('MARKET_KB_ID'))
+    
     if not kb_id:
-        raise Exception("CULTURAL_KB_ID environment variable not set")
-    return kb_id
-
-def get_market_kb_id():
-    """Get Market Intelligence Knowledge Base ID from environment variables."""
-    import os
-    kb_id = os.environ.get('MARKET_KB_ID')
-    if not kb_id:
-        raise Exception("MARKET_KB_ID environment variable not set")
+        raise Exception("Knowledge Base ID environment variable not set. Expected CULTURAL_INTELLIGENCE_KB_ID, CULTURAL_KB_ID, or MARKET_KB_ID")
+    
+    print(f"Using Knowledge Base ID: {kb_id}")
     return kb_id
 
 def get_dynamodb_table_name():
