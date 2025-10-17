@@ -97,8 +97,7 @@ resource "aws_iam_policy" "cultural_intelligence_dynamodb_policy" {
 
 # IAM Policy for Bedrock Knowledge Base Access (conditional)
 resource "aws_iam_policy" "cultural_intelligence_bedrock_policy" {
-  count = var.cultural_intelligence_kb_arn != "" && var.market_intelligence_kb_arn != "" ? 1 : 0
-  
+  count       = var.cultural_intelligence_kb_arn != "" && var.market_intelligence_kb_arn != "" ? 1 : 0
   name        = "${var.project_name}-${var.environment}-cultural-intelligence-bedrock-policy"
   description = "Policy for Cultural Intelligence Lambda to access Bedrock Knowledge Bases"
 

@@ -44,6 +44,7 @@ module "bedrock" {
   # Bedrock model configuration
   bedrock_model_id                    = var.bedrock_model_id
   bedrock_agent_inference_profile_arn = var.bedrock_agent_inference_profile_arn
+  cultural_intelligence_kb_id         = var.cultural_intelligence_kb_id
 
   # Lambda ARNs for action groups
   image_analysis_lambda_arn         = module.image_analysis.lambda_function_arn
@@ -95,22 +96,24 @@ module "api_gateway" {
 }
 
 # Knowledge Bases Module for cross-cultural adaptation
-module "knowledge_bases" {
-  source = "./modules/knowledge_bases"
+# Commented out - Knowledge base will be created manually
+# module "knowledge_bases" {
+#   source = "./modules/knowledge_bases"
+#
+#   project_name = var.project_name
+#   environment  = var.environment
+#   aws_region   = var.aws_region
+# }
 
-  project_name = var.project_name
-  environment  = var.environment
-  aws_region   = var.aws_region
-}
-
-# Cultural Intelligence Module for knowledge base interaction
 # Cultural Intelligence Lambda Module
 module "cultural_intelligence" {
   source = "./modules/cultural_intelligence"
 
   project_name                    = var.project_name
   environment                     = var.environment
-  s3_knowledge_base_bucket_name   = module.knowledge_bases.knowledge_base_documents_bucket_name
-  cultural_intelligence_kb_arn    = ""
-  market_intelligence_kb_arn      = ""
+  s3_knowledge_base_bucket_name   = "${var.project_name}-${var.environment}-knowledge-base-docs"  # Hardcoded since KB is manual
+  cultural_intelligence_kb_id     = var.cultural_intelligence_kb_id
+  cultural_intelligence_kb_arn    = var.cultural_intelligence_kb_id != "" ? "arn:aws:bedrock:${var.aws_region}:*:knowledge-base/${var.cultural_intelligence_kb_id}" : ""
+  market_intelligence_kb_id       = var.cultural_intelligence_kb_id  # Using same KB for both for now
+  market_intelligence_kb_arn      = var.cultural_intelligence_kb_id != "" ? "arn:aws:bedrock:${var.aws_region}:*:knowledge-base/${var.cultural_intelligence_kb_id}" : ""
 }

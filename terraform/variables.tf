@@ -62,3 +62,9 @@ variable "supervisor_agent_alias_id_override" {
   type        = string
   default     = ""
 }
+
+variable "cultural_intelligence_kb_id" {
+  description = "Knowledge Base ID for cultural intelligence"
+  type        = string
+  default     = ""
+}

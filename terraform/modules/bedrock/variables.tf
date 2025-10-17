@@ -63,3 +63,9 @@ variable "bedrock_agent_inference_profile_arn" {
   type        = string
   default     = ""
 }
+
+variable "cultural_intelligence_kb_id" {
+  description = "Knowledge Base ID for cultural intelligence"
+  type        = string
+  default     = ""
+}

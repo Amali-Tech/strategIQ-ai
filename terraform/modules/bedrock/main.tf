@@ -96,6 +96,34 @@ resource "aws_iam_policy" "bedrock_agent_model_policy" {
   }
 }
 
+# IAM policy for Bedrock agent to access knowledge bases
+resource "aws_iam_policy" "bedrock_agent_kb_policy" {
+  count       = var.cultural_intelligence_kb_id != "" ? 1 : 0
+  name        = "${var.project_name}-${var.environment}-bedrock-agent-kb-policy"
+  description = "Policy for Bedrock agent to access knowledge bases"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:Retrieve",
+          "bedrock:RetrieveAndGenerate"
+        ]
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}:*:knowledge-base/${var.cultural_intelligence_kb_id}"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
 # Attach policies to the Bedrock agent role
 resource "aws_iam_role_policy_attachment" "bedrock_agent_lambda_policy" {
   role       = aws_iam_role.bedrock_agent_role.name
@@ -105,6 +133,12 @@ resource "aws_iam_role_policy_attachment" "bedrock_agent_lambda_policy" {
 resource "aws_iam_role_policy_attachment" "bedrock_agent_model_policy" {
   role       = aws_iam_role.bedrock_agent_role.name
   policy_arn = aws_iam_policy.bedrock_agent_model_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "bedrock_agent_kb_policy" {
+  count      = var.cultural_intelligence_kb_id != "" ? 1 : 0
+  role       = aws_iam_role.bedrock_agent_role.name
+  policy_arn = aws_iam_policy.bedrock_agent_kb_policy[0].arn
 }
 
 # Supervisor Bedrock Agent
@@ -118,10 +152,13 @@ resource "aws_bedrockagent_agent" "supervisor" {
   instruction = <<-EOT
 You are an AI Marketing Campaign Supervisor responsible for orchestrating comprehensive marketing campaigns using specialized action groups and agents.
 
-## Available Action Groups:
+## Available Resources:
+### Action Groups:
 1. **image-analysis**: Analyzes product images using Amazon Rekognition - call with /analyze-product-image endpoint
 2. **data-enrichment**: Enriches campaign data using YouTube API - call with /enrich-campaign-data endpoint
 3. **cultural-intelligence**: Provides cross-cultural adaptation and market intelligence - call with /cultural-insights endpoint
+
+${var.cultural_intelligence_kb_id != "" ? "### Knowledge Base:\n- **Cultural Intelligence Knowledge Base** (ID: ${var.cultural_intelligence_kb_id}): Contains cross-cultural guidelines, market intelligence, and cultural adaptation insights for global markets. You can query this knowledge base directly for cultural insights and market-specific information." : ""}
 
 ## Enhanced Campaign Generation Workflow:
 
@@ -203,6 +240,18 @@ EOT
     Project     = var.project_name
     Purpose     = "AI campaign orchestration supervisor"
   }
+}
+
+# Knowledge Base Association for Cultural Intelligence
+resource "aws_bedrockagent_agent_knowledge_base_association" "cultural_intelligence_kb" {
+  count                = var.cultural_intelligence_kb_id != "" ? 1 : 0
+  agent_id             = aws_bedrockagent_agent.supervisor.agent_id
+  agent_version        = "DRAFT"
+  description          = "Cultural Intelligence Knowledge Base for cross-cultural campaign adaptation"
+  knowledge_base_id    = var.cultural_intelligence_kb_id
+  knowledge_base_state = "ENABLED"
+
+  depends_on = [aws_bedrockagent_agent.supervisor]
 }
 
 # OpenAPI schema for image analysis action group
