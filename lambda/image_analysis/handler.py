@@ -12,29 +12,33 @@ s3 = boto3.client('s3')
 def lambda_handler(event, context):
     """
     Lambda handler for image analysis using Amazon Rekognition.
-    Analyzes product images and stores structured data in DynamoDB.
+    Analyzes        if function_name == 'analyze_product_image' or api_path == '/analyze-product-image':
+            # Convert to internal format
+            product_info = parameters.get('product_info', {})
+            s3_info = parameters.get('s3_info', {})
+            
+            internal_params = {
+                'product_info': {
+                    'name': product_info.get('name', '') if isinstance(product_info, dict) else '',
+                    'description': product_info.get('description', '') if isinstance(product_info, dict) else '',
+                    'category': product_info.get('category', '') if isinstance(product_info, dict) else ''
+                },
+                's3_info': {
+                    'bucket': s3_info.get('bucket', '') if isinstance(s3_info, dict) else '',
+                    'key': s3_info.get('key', '') if isinstance(s3_info, dict) else ''
+                }
+            }es and stores structured data in DynamoDB.
     
-    Expected event format from Bedrock agent:
-    {
-        "actionGroup": "image-analysis",
-        "function": "analyze_product_image",
-        "parameters": {
-            "product_info": {
-                "name": "Product Name",
-                "description": "Product description",
-                "category": "Product Category"
-            },
-            "s3_info": {
-                "bucket": "bucket-name",
-                "key": "path/to/image.jpg"
-            }
-        }
-    }
+    Handles both direct invocation and Bedrock agent invocation formats.
     """
     try:
         print(f"Received event: {json.dumps(event)}")
         
-        # Parse the action group request
+        # Check if this is a Bedrock agent invocation
+        if 'messageVersion' in event and 'requestBody' in event:
+            return handle_bedrock_agent_invocation(event, context)
+        
+        # Handle direct invocation format
         action_group = event.get('actionGroup')
         function_name = event.get('function')
         parameters = event.get('parameters', {})
@@ -49,7 +53,7 @@ def lambda_handler(event, context):
             
     except Exception as e:
         print(f"Error in lambda_handler: {str(e)}")
-        return create_error_response(f"Internal error: {str(e)}")
+        return create_bedrock_error_response(f"Internal error: {str(e)}")
 
 def handle_image_analysis(parameters, context):
     """
@@ -299,7 +303,7 @@ def create_success_response(data):
     }
 
 def create_error_response(error_message):
-    """Create an error response for Bedrock agent."""
+    """Create an error response for direct invocation."""
     return {
         'statusCode': 400,
         'body': json.dumps({
@@ -307,3 +311,113 @@ def create_error_response(error_message):
             'error': error_message
         })
     }
+
+def create_bedrock_error_response(error_message, api_path='/analyze-product-image'):
+    """Create a Bedrock agent compatible error response."""
+    return {
+        'messageVersion': '1.0',
+        'response': {
+            'actionGroup': 'image-analysis',
+            'apiPath': api_path,
+            'httpMethod': 'POST',
+            'httpStatusCode': 400,
+            'responseBody': {
+                'application/json': {
+                    'body': json.dumps({
+                        'success': False,
+                        'error': error_message
+                    })
+                }
+            }
+        }
+    }
+
+def handle_bedrock_agent_invocation(event, context):
+    """Handle Bedrock agent invocation format."""
+    try:
+        # Extract the request body content directly
+        request_body = event.get('requestBody', {})
+        content = request_body.get('content', {})
+        
+        # Parse function and API path
+        function_name = event.get('function', '')
+        api_path = event.get('apiPath', '')
+        
+        print(f"Function: {function_name}, API Path: {api_path}")
+        print(f"Content: {json.dumps(content, default=str)}")
+        
+        # Handle the specific Bedrock agent format with properties array
+        json_body = None
+        if 'application/json' in content and isinstance(content['application/json'], dict):
+            app_json = content['application/json']
+            if 'properties' in app_json:
+                # Convert properties array to proper JSON structure
+                json_body = {}
+                for prop in app_json['properties']:
+                    prop_name = prop.get('name')
+                    prop_value = prop.get('value', '')
+                    
+                    if prop_name == 'product_info':
+                        # Parse the product_info string
+                        try:
+                            # Fix the JSON format
+                            fixed_value = '{' + prop_value + '}'
+                            json_body['product_info'] = json.loads(fixed_value)
+                        except json.JSONDecodeError:
+                            return create_bedrock_error_response(f"Invalid product_info format: {prop_value}", api_path)
+                    
+                    elif prop_name == 's3_info':
+                        # Parse the s3_info string
+                        try:
+                            # Fix the JSON format
+                            fixed_value = '{' + prop_value + '}'
+                            json_body['s3_info'] = json.loads(fixed_value)
+                        except json.JSONDecodeError:
+                            return create_bedrock_error_response(f"Invalid s3_info format: {prop_value}", api_path)
+        
+        if not json_body:
+            return create_bedrock_error_response("Could not extract valid JSON from Bedrock request", api_path)
+        
+        print(f"Constructed JSON body: {json.dumps(json_body, default=str)}")
+        
+        if function_name == 'analyze_product_image' or api_path in ['/analyze-image', '/analyze-product-image']:
+            # Validate required fields
+            product_info = json_body.get('product_info')
+            s3_info = json_body.get('s3_info')
+            
+            if not product_info:
+                return create_bedrock_error_response("product_info is required", api_path)
+            if not s3_info:
+                return create_bedrock_error_response("s3_info is required", api_path)
+            
+            # Call the analysis function with the extracted parameters
+            result = handle_image_analysis(json_body, context)
+            
+            # Convert response to Bedrock format
+            if result.get('statusCode') == 200:
+                body_data = json.loads(result['body'])
+                return {
+                    'messageVersion': '1.0',
+                    'response': {
+                        'actionGroup': 'image-analysis',
+                        'apiPath': api_path,  # Use the same path that was called
+                        'httpMethod': 'POST',
+                        'httpStatusCode': 200,
+                        'responseBody': {
+                            'application/json': {
+                                'body': json.dumps(body_data)
+                            }
+                        }
+                    }
+                }
+            else:
+                error_data = json.loads(result['body'])
+                return create_bedrock_error_response(error_data.get('error', 'Unknown error'), api_path)
+        else:
+            return create_bedrock_error_response(f"Unknown function: {function_name}, path: {api_path}", api_path)
+            
+    except Exception as e:
+        print(f"Error in handle_bedrock_agent_invocation: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return create_bedrock_error_response(f"Processing error: {str(e)}")

@@ -178,3 +178,11 @@ resource "aws_iam_role_policy_attachment" "image_analysis_s3_policy" {
   policy_arn = aws_iam_policy.image_analysis_s3_policy.arn
   role       = aws_iam_role.image_analysis_role.name
 }
+
+# Lambda permission for Bedrock agent to invoke the function
+resource "aws_lambda_permission" "bedrock_invoke_image_analysis" {
+  statement_id  = "AllowExecutionFromBedrock"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.image_analysis.function_name
+  principal     = "bedrock.amazonaws.com"
+}

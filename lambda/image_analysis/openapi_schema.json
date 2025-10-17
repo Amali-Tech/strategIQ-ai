@@ -6,7 +6,7 @@
     "description": "Action group for analyzing product images using Amazon Rekognition and storing structured data"
   },
   "paths": {
-    "/analyze-product-image": {
+    "/analyze-image": {
       "post": {
         "summary": "Analyze product image using Rekognition",
         "description": "Analyzes a product image from S3 using Amazon Rekognition to detect labels, then stores structured analysis data in DynamoDB",

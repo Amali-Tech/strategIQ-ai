@@ -22,6 +22,12 @@ variable "image_analysis_lambda_arn" {
   default     = ""  # Will be populated when Lambda is created
 }
 
+variable "data_enrichment_lambda_arn" {
+  description = "ARN of the data enrichment Lambda function"
+  type        = string
+  default     = ""  # Will be populated when Lambda is created
+}
+
 variable "campaign_generation_lambda_arn" {
   description = "ARN of the campaign generation Lambda function"
   type        = string
@@ -36,6 +42,12 @@ variable "voice_of_market_lambda_arn" {
 
 variable "lokalize_lambda_arn" {
   description = "ARN of the lokalize Lambda function"
+  type        = string
+  default     = ""  # Will be populated when Lambda is created
+}
+
+variable "cultural_intelligence_lambda_arn" {
+  description = "ARN of the cultural intelligence Lambda function"
   type        = string
   default     = ""  # Will be populated when Lambda is created
 }

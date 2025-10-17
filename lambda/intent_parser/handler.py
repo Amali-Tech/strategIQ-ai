@@ -141,17 +141,42 @@ def build_intent(intent_type, request_data, request_id=None):
     }
     
     if intent_type == 'create_campaign':
+        s3_info = request_data.get('s3_info')
+        product = request_data.get('product', {})
+        
+        instructions = 'Use the campaign generation workflow: '
+        
+        if s3_info and s3_info.get('bucket') and s3_info.get('key'):
+            instructions += f"""FIRST call the image-analysis action group using /analyze-image endpoint with this EXACT payload:
+{{
+  "product_info": {{
+    "name": "{product.get('name', 'Unknown')}",
+    "description": "{product.get('description', 'No description provided')}",
+    "category": "{product.get('category', 'General')}"
+  }},
+  "s3_info": {{
+    "bucket": "{s3_info.get('bucket')}",
+    "key": "{s3_info.get('key')}"
+  }}
+}}
+
+Then use the image analysis results to enhance your campaign recommendations. """
+        
+        instructions += 'Generate platform-specific content for Instagram, TikTok, Facebook, YouTube, and Twitter. Provide structured campaign recommendations with clear next steps and success metrics.'
+        
         return {
             **base_intent,
-            'task': 'Create a basic marketing campaign (Tier 1)',
-            'instructions': 'Use the campaign generation workflow: 1) Analyze product information and any provided images, 2) Generate platform-specific content ideas, 3) Provide structured campaign recommendations with clear next steps.',
+            'task': 'Create a comprehensive marketing campaign with image analysis',
+            'instructions': instructions,
             'context': {
-                'product': request_data.get('product'),
+                'product': product,
                 'target_markets': request_data.get('target_markets', ['Global']),
                 'campaign_objectives': request_data.get('campaign_objectives', ['awareness']),
+                'campaign_goals': request_data.get('campaign_goals', ['general_marketing']),
+                'target_audience': request_data.get('target_audience', {}),
                 'budget_range': request_data.get('budget_range', 'medium'),
                 'timeline': request_data.get('timeline'),
-                'image_url': request_data.get('image_url'),  # Optional product image
+                's3_info': s3_info,
                 'platform_preferences': request_data.get('platform_preferences', ['instagram', 'facebook', 'tiktok'])
             }
         }
