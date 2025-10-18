@@ -30,14 +30,23 @@ def lambda_handler(event, context):
     try:
         print(f"Received event: {json.dumps(event)}")
         
+        # Parse request body if coming from API Gateway
+        request_body = event
+        if 'body' in event:
+            # This is an API Gateway event
+            if isinstance(event.get('body'), str):
+                request_body = json.loads(event['body'])
+            else:
+                request_body = event.get('body', {})
+        
         # Validate input
-        if not isinstance(event, dict):
+        if not isinstance(request_body, dict):
             return create_error_response("Invalid request format: expected JSON object")
         
-        product_info = event.get('product_info', {})
-        s3_info = event.get('s3_info', {})
-        target_markets = event.get('target_markets', {})
-        campaign_objectives = event.get('campaign_objectives', {})
+        product_info = request_body.get('product_info', {})
+        s3_info = request_body.get('s3_info', {})
+        target_markets = request_body.get('target_markets', {})
+        campaign_objectives = request_body.get('campaign_objectives', {})
         
         # Generate correlation ID for tracking
         correlation_id = str(uuid.uuid4())
@@ -122,6 +131,9 @@ def lambda_handler(event, context):
         
         # If synthesis also fails, return aggregated data as-is
         print("TIER 2 WARNING: Bedrock synthesis also failed, returning aggregated data")
+        # Convert Decimals before JSON serialization
+        clean_aggregated = convert_decimals(aggregated_record)
+        clean_objectives = convert_decimals(campaign_objectives)
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -129,7 +141,7 @@ def lambda_handler(event, context):
                 'correlation_id': correlation_id,
                 'generation_method': 'fail_safe_aggregated_data_only',
                 'product_id': product_id,
-                'campaign': create_fallback_campaign(aggregated_record, campaign_objectives),
+                'campaign': create_fallback_campaign(clean_aggregated, clean_objectives),
                 'warning': 'Campaign generated from aggregated data only, Bedrock synthesis unavailable'
             })
         }
