@@ -1,917 +1,820 @@
 import json
-import os
-import re
-import time
-import random
-import uuid
-from datetime import datetime, timedelta
 import boto3
+import os
+import uuid
+from datetime import datetime
 from botocore.exceptions import ClientError
 
 # Initialize AWS clients
-bedrock_client = boto3.client('bedrock-agent-runtime')
+bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
+lambda_client = boto3.client('lambda')
 dynamodb = boto3.resource('dynamodb')
-eventbridge = boto3.client('events')
 
 def lambda_handler(event, context):
     """
-    Lambda handler for intent parsing and routing to Bedrock supervisor agent.
-    Receives API Gateway requests, parses intent, and invokes appropriate agent workflows.
+    Intent parser Lambda that orchestrates campaign generation.
+    
+    Two-tier architecture:
+    1. TRY: Invoke Bedrock agent with tool calling enabled
+    2. FALLBACK: If agent fails, invoke Lambdas sequentially and aggregate results,
+                 then have agent synthesize without tool calling
+    
+    Input:
+    {
+        "product_info": {...},
+        "s3_info": {...},
+        "target_markets": {...},
+        "campaign_objectives": {...}
+    }
     """
     try:
-        # Log incoming event for debugging
         print(f"Received event: {json.dumps(event)}")
         
-        # Parse route and determine intent
-        route_key = event.get('routeKey', '')
-        http_method = event.get('requestContext', {}).get('http', {}).get('method', '')
-        path = event.get('requestContext', {}).get('http', {}).get('path', '')
+        # Parse request body if coming from API Gateway
+        request_body = event
+        if 'body' in event:
+            # This is an API Gateway event
+            if isinstance(event.get('body'), str):
+                request_body = json.loads(event['body'])
+            else:
+                request_body = event.get('body', {})
         
-        # Route-based intent parsing
-        intent_type = parse_intent_from_route(route_key, http_method, path)
-        if not intent_type:
-            return create_response(404, {'error': 'Route not found or unsupported'})
+        # Validate input
+        if not isinstance(request_body, dict):
+            return create_error_response("Invalid request format: expected JSON object")
         
-        # Parse and validate request body
-        body = event.get('body', '')
-        if not body:
-            return create_response(400, {'error': 'Request body is required'})
+        product_info = request_body.get('product_info', {})
+        s3_info = request_body.get('s3_info', {})
+        target_markets = request_body.get('target_markets', {})
+        campaign_objectives = request_body.get('campaign_objectives', {})
         
-        try:
-            request_data = json.loads(body)
-        except json.JSONDecodeError as e:
-            return create_response(400, {'error': f'Invalid JSON: {str(e)}'})
+        # Generate correlation ID for tracking
+        correlation_id = str(uuid.uuid4())
+        print(f"Correlation ID: {correlation_id}")
         
-        # Validate based on intent type
-        validation_error = validate_request(intent_type, request_data)
-        if validation_error:
-            return create_response(400, validation_error)
+        # TIER 1: Try Bedrock Agent with tool calling
+        print("=" * 50)
+        print("TIER 1: Attempting Bedrock agent with tool calling")
+        print("=" * 50)
         
-        # Retrieve environment variables
-        agent_id = os.environ.get('SUPERVISOR_AGENT_ID')
-        agent_alias_id = os.environ.get('SUPERVISOR_AGENT_ALIAS_ID', 'TSTALIASID')
-        
-        if not agent_id:
-            print("ERROR: Missing SUPERVISOR_AGENT_ID environment variable")
-            return create_response(500, {'error': 'Server configuration error: missing agent credentials'})
-        
-        # Validate format
-        if not re.match(r'^[A-Za-z0-9-]+$', agent_id) or not re.match(r'^[A-Za-z0-9-]+$', agent_alias_id):
-            print("ERROR: Invalid environment variable format")
-            return create_response(500, {'error': 'Server configuration error: invalid agent credentials format'})
-        
-        # Build structured intent for Bedrock agent
-        intent = build_intent(intent_type, request_data, context.aws_request_id)
-        print(f"Built intent: {json.dumps(intent)}")
-        
-        # Generate unique campaign ID and use Lambda aws_request_id as session ID
-        campaign_id = str(uuid.uuid4())
-        session_id = context.aws_request_id
-        
-        # Create initial campaign status record
-        create_campaign_status(campaign_id, 'processing', intent.get('context', {}))
-        
-        # Invoke Bedrock supervisor agent
-        agent_response = invoke_bedrock_agent(
-            agent_id=agent_id,
-            agent_alias_id=agent_alias_id,
-            intent=intent,
-            session_id=session_id
+        agent_result = try_bedrock_agent_with_tools(
+            product_info=product_info,
+            s3_info=s3_info,
+            target_markets=target_markets,
+            campaign_objectives=campaign_objectives,
+            correlation_id=correlation_id
         )
         
-        # Handle response based on campaign type
-        if intent_type == 'create_basic_campaign':
-            # Basic campaign: Return comprehensive structure
-            update_campaign_status(campaign_id, 'completed', agent_response)
-            
-            # Convert to comprehensive structure
-            comprehensive_response = create_comprehensive_campaign_response(agent_response, request_data, campaign_id)
-            
-            response_data = comprehensive_response
-            
-        elif intent_type == 'create_comprehensive_campaign':
-            # Comprehensive campaign: Emit event for async asset generation
-            update_campaign_status(campaign_id, 'awaiting_assets', agent_response)
-            emit_campaign_completion_event(campaign_id, agent_response, intent.get('context', {}))
-            
-            # Convert to comprehensive structure
-            comprehensive_response = create_comprehensive_campaign_response(agent_response, request_data, campaign_id)
-            comprehensive_response['status'] = 'awaiting_assets' 
-            comprehensive_response['message'] = 'Comprehensive campaign analysis completed. Visual assets are being generated asynchronously.'
-            
-            response_data = comprehensive_response
-        
-        return create_response(200, response_data)
-        
-    except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        error_message = e.response.get('Error', {}).get('Message', str(e))
-        print(f"AWS ClientError: {error_code} - {error_message}")
-        return create_response(500, {'error': f'Bedrock invocation failed: {error_message}'})
-    
-    except Exception as e:
-        print(f"Unexpected error: {str(e)}")
-        return create_response(500, {'error': f'Internal server error: {str(e)}'})
-
-def parse_intent_from_route(route_key, http_method, path):
-    """
-    Parse intent type from API Gateway route information.
-    
-    Args:
-        route_key: API Gateway route key
-        http_method: HTTP method
-        path: Request path
-    
-    Returns:
-        String indicating intent type or None if unsupported
-    """
-    # Basic campaign creation (Tier 1 - Image analysis + Data enrichment + Campaign generation)
-    if route_key == 'POST /api/campaigns' or (http_method == 'POST' and '/api/campaigns' in path):
-        return 'create_basic_campaign'
-    
-    # Comprehensive campaign (Tier 3 - Full workflow + Cultural intelligence + Async assets)
-    if route_key == 'POST /api/comprehensive-campaign' or (http_method == 'POST' and '/api/comprehensive-campaign' in path):
-        return 'create_comprehensive_campaign'
-    
-    return None
-
-def validate_request(intent_type, request_data):
-    """
-    Validate request data based on intent type.
-    
-    Args:
-        intent_type: Type of intent being processed
-        request_data: Parsed request body
-    
-    Returns:
-        Dictionary with error message if validation fails, None if valid
-    """
-    if intent_type in ['create_basic_campaign', 'create_comprehensive_campaign']:
-        if not request_data.get('product') or not isinstance(request_data['product'], dict):
-            return {'error': 'Product field is required and must be an object'}
-        if 'name' not in request_data['product']:
-            return {'error': 'Product name is required'}
-    
-    return None
-
-def build_intent(intent_type, request_data, request_id=None):
-    """
-    Build structured intent for the Bedrock supervisor agent based on intent type.
-    
-    Args:
-        intent_type: Type of intent being processed
-        request_data: Parsed request body
-        request_id: AWS request ID for tracking
-    
-    Returns:
-        Dictionary containing the structured intent with InvokeAgent instructions
-    """
-    base_intent = {
-        'intent_type': intent_type,
-        'timestamp': request_id or 'unknown',
-        'output_format': 'structured_json'
-    }
-    
-    if intent_type in ['create_basic_campaign', 'create_comprehensive_campaign']:
-        s3_info = request_data.get('s3_info')
-        product = request_data.get('product', {})
-        
-        # Route-specific instructions
-        if intent_type == 'create_basic_campaign':
-            instructions = 'ROUTE: /campaign - Use the basic campaign workflow: '
-        else:
-            instructions = 'ROUTE: /comprehensive-campaign - Use the comprehensive campaign workflow: '
-        
-        if s3_info and s3_info.get('bucket') and s3_info.get('key'):
-            instructions += f"""FIRST call the image-analysis action group using /analyze-product-image endpoint with this EXACT payload:
-{{
-  "product_info": {{
-    "name": "{product.get('name', 'Unknown')}",
-    "description": "{product.get('description', 'No description provided')}",
-    "category": "{product.get('category', 'General')}"
-  }},
-  "s3_info": {{
-    "bucket": "{s3_info.get('bucket')}",
-    "key": "{s3_info.get('key')}"
-  }}
-}}
-
-Then use the image analysis results to enhance your campaign recommendations. """
-        
-        if intent_type == 'create_basic_campaign':
-            instructions += 'Generate platform-specific content for Instagram, TikTok, Facebook, YouTube, and Twitter. Provide structured campaign recommendations with clear next steps and success metrics. Do NOT include visual asset generation.'
-        else:
-            instructions += 'Generate enhanced platform-specific content for global markets including cultural adaptations. Include asset placeholders like {{PLACEHOLDER_SOCIAL_POST_IMAGE}} for async generation. Do NOT call visual-asset-generator directly.'
-        
-        return {
-            **base_intent,
-            'task': 'Create a comprehensive marketing campaign with image analysis',
-            'instructions': instructions,
-            'context': {
-                'product': product,
-                'target_markets': request_data.get('target_markets', ['Global']),
-                'campaign_objectives': request_data.get('campaign_objectives', ['awareness']),
-                'campaign_goals': request_data.get('campaign_goals', ['general_marketing']),
-                'target_audience': request_data.get('target_audience', {}),
-                'budget_range': request_data.get('budget_range', 'medium'),
-                'timeline': request_data.get('timeline'),
-                's3_info': s3_info,
-                'platform_preferences': request_data.get('platform_preferences', ['instagram', 'facebook', 'tiktok'])
+        if agent_result.get('success'):
+            print("TIER 1 SUCCESS: Bedrock agent generated campaign")
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': True,
+                    'correlation_id': correlation_id,
+                    'generation_method': 'bedrock_agent_with_tools',
+                    'campaign': agent_result.get('campaign')
+                })
             }
-        }
-    
-    # Remove None values to keep intent clean
-    if 'context' in base_intent:
-        base_intent['context'] = {k: v for k, v in base_intent['context'].items() if v is not None}
-    
-    return base_intent
-
-def invoke_bedrock_agent_with_retry(agent_id, agent_alias_id, intent, session_id, max_retries=3):
-    """
-    Invoke Bedrock agent with retry logic for throttling exceptions.
-    Uses exponential backoff with jitter to handle throttling gracefully.
-    """
-    input_text = json.dumps(intent)
-    print(f"Invoking Bedrock agent {agent_id} with alias {agent_alias_id}, session: {session_id}")
-    
-    for attempt in range(max_retries + 1):
-        try:
-            response = bedrock_client.invoke_agent(
-                agentId=agent_id,
-                agentAliasId=agent_alias_id,
-                sessionId=session_id,
-                inputText=input_text,
-                enableTrace=True,
-                endSession=False
-            )
-            
-            return process_response_stream(response.get('completion'))
-            
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code', '')
-            error_message = e.response.get('Error', {}).get('Message', str(e))
-            
-            if error_code == 'ThrottlingException' and attempt < max_retries:
-                # Calculate exponential backoff with jitter
-                base_delay = 2 ** attempt  # 1, 2, 4 seconds
-                jitter = random.uniform(0.1, 0.3)  # Add 10-30% jitter
-                delay = base_delay + jitter
-                
-                print(f"Throttling detected on attempt {attempt + 1}/{max_retries + 1}. "
-                      f"Retrying in {delay:.2f} seconds...")
-                time.sleep(delay)
-                continue
-            else:
-                # Re-raise non-throttling errors or if max retries exceeded
-                print(f"Bedrock ClientError (attempt {attempt + 1}): {error_code} - {error_message}")
-                raise
         
-        except Exception as e:
-            print(f"Unexpected error during Bedrock invocation (attempt {attempt + 1}): {str(e)}")
-            if attempt < max_retries and 'throttling' in str(e).lower():
-                # Handle throttling exceptions that come through response stream
-                base_delay = 2 ** attempt
-                jitter = random.uniform(0.1, 0.3)
-                delay = base_delay + jitter
-                
-                print(f"Stream throttling detected. Retrying in {delay:.2f} seconds...")
-                time.sleep(delay)
-                continue
-            else:
-                raise
-    
-    # This should never be reached due to the raise statements above
-    raise Exception(f"Failed to invoke Bedrock agent after {max_retries + 1} attempts")
+        # TIER 1 FAILED - Log and proceed to TIER 2
+        print("\n" + "=" * 50)
+        print("TIER 1 FAILED: Bedrock agent did not generate valid campaign")
+        print("Reason:", agent_result.get('error', 'Unknown'))
+        print("=" * 50)
+        print("\nTIER 2: Using fail-safe orchestration")
+        print("=" * 50)
+        
+        # TIER 2: Fail-safe orchestration
+        aggregated_data = tier2_fail_safe_orchestration(
+            product_info=product_info,
+            s3_info=s3_info,
+            target_markets=target_markets,
+            campaign_objectives=campaign_objectives,
+            correlation_id=correlation_id
+        )
+        
+        if not aggregated_data.get('success'):
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'success': False,
+                    'correlation_id': correlation_id,
+                    'error': 'Failed to generate campaign data: ' + aggregated_data.get('error', 'Unknown')
+                })
+            }
+        
+        product_id = aggregated_data.get('product_id')
+        aggregated_record = aggregated_data.get('aggregated_record', {})
+        
+        # Now invoke Bedrock agent WITHOUT tool calling - just for synthesis
+        print("\nTIER 2b: Invoking Bedrock agent for data synthesis (no tool calling)")
+        agent_synthesis_result = synthesize_with_bedrock(
+            product_id=product_id,
+            aggregated_record=aggregated_record,
+            campaign_objectives=campaign_objectives,
+            correlation_id=correlation_id
+        )
+        
+        if agent_synthesis_result.get('success'):
+            print("TIER 2 SUCCESS: Bedrock synthesized campaign from aggregated data")
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': True,
+                    'correlation_id': correlation_id,
+                    'generation_method': 'fail_safe_orchestration_with_synthesis',
+                    'product_id': product_id,
+                    'campaign': agent_synthesis_result.get('campaign')
+                })
+            }
+        
+        # If synthesis also fails, return aggregated data as-is
+        print("TIER 2 WARNING: Bedrock synthesis also failed, returning aggregated data")
+        # Convert Decimals before JSON serialization
+        clean_aggregated = convert_decimals(aggregated_record)
+        clean_objectives = convert_decimals(campaign_objectives)
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'success': True,
+                'correlation_id': correlation_id,
+                'generation_method': 'fail_safe_aggregated_data_only',
+                'product_id': product_id,
+                'campaign': create_fallback_campaign(clean_aggregated, clean_objectives),
+                'warning': 'Campaign generated from aggregated data only, Bedrock synthesis unavailable'
+            })
+        }
+        
+    except Exception as e:
+        print(f"Fatal error in intent parser: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'success': False,
+                'error': f'Intent parser failure: {str(e)}'
+            })
+        }
 
-def invoke_bedrock_agent(agent_id, agent_alias_id, intent, session_id):
-    """
-    Invoke Bedrock agent with the structured intent and process the response stream.
-    Wrapper function that calls the retry-enabled version.
-    """
-    return invoke_bedrock_agent_with_retry(agent_id, agent_alias_id, intent, session_id)
 
-def process_response_stream(stream):
+def try_bedrock_agent_with_tools(product_info, s3_info, target_markets, campaign_objectives, correlation_id):
     """
-    Process the Bedrock agent response stream and aggregate chunks.
+    Tier 1: Try to invoke Bedrock agent with tool calling enabled.
+    
+    Returns:
+        Dict with 'success' and 'campaign' keys if successful, or 'error' if failed
     """
-    if not stream:
-        raise Exception("Empty response stream from Bedrock agent")
-    
-    aggregated_content = []
-    trace_events = []
-    
     try:
-        for event in stream:
+        agent_id = os.environ.get('BEDROCK_AGENT_ID', '1MGRL5IMZ2')
+        agent_alias_id = os.environ.get('BEDROCK_AGENT_ALIAS_ID', 'YZRQ8FV4GH')
+        session_id = f"session-{correlation_id}"
+        
+        # Prepare agent input
+        prompt = f"""Generate a comprehensive viral marketing campaign based on:
+
+Product Information:
+{json.dumps(product_info, indent=2)}
+
+Target Markets: {json.dumps(target_markets, indent=2)}
+
+Campaign Objectives: {json.dumps(campaign_objectives, indent=2)}
+
+Image Location: s3://{s3_info.get('bucket', 'degenerals-mi-dev-images')}/{s3_info.get('key', '')}
+
+Please analyze the product image, enrich the campaign data with market insights and YouTube recommendations, 
+and provide cultural intelligence for the target markets. Then synthesize all information into a complete 
+marketing campaign strategy with specific tactics for each platform.
+
+Use tool calling to:
+1. Analyze the product image
+2. Enrich campaign data
+3. Analyze cultural insights
+
+Then synthesize the results into a complete campaign JSON."""
+
+        print(f"Invoking Bedrock agent {agent_id} with session {session_id}")
+        
+        # Invoke Bedrock agent
+        response = bedrock_agent_runtime.invoke_agent(
+            agentId=agent_id,
+            agentAliasId=agent_alias_id,
+            sessionId=session_id,
+            inputText=prompt
+        )
+        
+        # Process response stream
+        event_stream = response.get('completion', [])
+        agent_response_text = ""
+        
+        for event in event_stream:
             if 'chunk' in event:
                 chunk = event['chunk']
                 if 'bytes' in chunk:
-                    content = chunk['bytes'].decode('utf-8')
-                    aggregated_content.append(content)
-                    print(f"Received chunk: {content[:100]}...")
-            
-            elif 'trace' in event:
-                trace = event['trace']
-                trace_events.append(trace)
-                print(f"TRACE: {trace.get('traceId', 'unknown')}")
-            
-            elif 'internalServerException' in event:
-                error = event['internalServerException']
-                error_message = error.get('message', 'Internal server error')
-                raise Exception(f"Bedrock agent error: {error_message}")
-            
-            elif 'validationException' in event:
-                error = event['validationException']
-                error_message = error.get('message', 'Validation error')
-                raise Exception(f"Bedrock agent validation error: {error_message}")
-            
-            elif 'throttlingException' in event:
-                error = event['throttlingException']
-                error_message = error.get('message', 'Throttling error')
-                # Let this bubble up as a generic exception so retry logic can catch it
-                raise Exception(f"throttling: {error_message}")
-    
-    except Exception as e:
-        print(f"Error processing stream: {str(e)}")
-        raise
-    
-    full_content = ''.join(aggregated_content)
-    
-    if not full_content:
-        if trace_events:
-            print("Warning: No content chunks received, only trace events")
-            return {'status': 'completed', 'trace': trace_events, 'content': None}
-        else:
-            raise Exception("No content received from Bedrock agent")
-    
-    try:
-        parsed_response = json.loads(full_content)
-        return structure_campaign_response(parsed_response)
-    except json.JSONDecodeError:
-        # If the response isn't valid JSON, try to extract JSON from text
-        structured_response = extract_and_structure_json(full_content)
-        if structured_response:
-            return structured_response
+                    agent_response_text += chunk['bytes'].decode('utf-8')
         
-        # If no JSON found, return as structured text with fallback structure
-        print("Warning: Response is not valid JSON, creating fallback structure")
-        return create_fallback_structure(full_content)
-
-def structure_campaign_response(parsed_response):
-    """
-    Ensure the campaign response has the expected structure for the frontend.
-    Now validates that agent actually called action groups and returned real data.
-    """
-    # Check if it's the new comprehensive structure with actual data
-    if all(key in parsed_response for key in ['product', 'content_ideas', 'campaigns', 'generated_assets']):
-        print("Agent returned comprehensive structure - validating data quality")
+        print(f"Bedrock agent response length: {len(agent_response_text)} chars")
         
-        # Validate that critical fields have real data (not empty or placeholder)
-        product = parsed_response.get('product', {})
-        image_labels = product.get('image', {}).get('labels', [])
-        related_videos = parsed_response.get('related_youtube_videos', [])
-        market_trends = parsed_response.get('market_trends', {})
-        trending_keywords = market_trends.get('trending_keywords', [])
+        # Try to extract JSON campaign from response
+        campaign = extract_campaign_json(agent_response_text)
         
-        # Check for indicators that agent didn't call action groups properly
-        if not image_labels:
-            print("WARNING: No image labels found - agent may not have called image-analysis action group")
-        
-        if not related_videos:
-            print("ERROR: No related YouTube videos found - agent MUST call data-enrichment action group")
-            # Don't fail for now, but log the error
-        
-        if not trending_keywords or trending_keywords == ['quietcomfort', 'best', 'headphones', 'bose', 'sony']:
-            print("WARNING: Trending keywords appear to be generic/default - agent should use data enrichment results")
-        
-        return parsed_response
-    
-    # Check if it's the legacy structure
-    if all(key in parsed_response for key in ['campaign_strategy', 'visual_insights', 'platform_content', 'market_trends', 'success_metrics']):
-        print("Agent returned legacy structure - converting to comprehensive")
-        return convert_legacy_to_comprehensive(parsed_response)
-    
-    # If it's a wrapper with content, extract it
-    if 'content' in parsed_response and isinstance(parsed_response['content'], dict):
-        return structure_campaign_response(parsed_response['content'])
-    
-    # If it's just text content, don't create fallback - let it fail
-    if 'content' in parsed_response and isinstance(parsed_response['content'], str):
-        print("ERROR: Agent returned text content instead of structured JSON - this indicates agent malfunction")
-        raise Exception("Agent returned unstructured text instead of JSON - agent did not follow instructions properly")
-    
-    # Return the response as-is if it's already structured
-    return parsed_response
-
-def convert_legacy_to_comprehensive(legacy_response):
-    """
-    Convert legacy response structure to comprehensive structure.
-    """
-    print("Converting legacy response to comprehensive structure")
-    
-    # Extract platform content for conversion
-    platform_content = legacy_response.get('platform_content', {})
-    
-    return {
-        "product": {
-            "description": legacy_response.get('campaign_strategy', {}).get('overview', 'Product description'),
-            "image": {
-                "labels": legacy_response.get('visual_insights', {}).get('detected_objects', [])
+        if campaign:
+            print("Successfully extracted campaign JSON from agent response")
+            return {
+                'success': True,
+                'campaign': campaign
             }
-        },
-        "content_ideas": create_content_ideas_from_platform_content(platform_content),
-        "campaigns": create_campaign_sections_from_legacy(legacy_response),
-        "generated_assets": create_generated_assets_section(legacy_response),
-        "platform_content": platform_content,
-        "market_trends": legacy_response.get('market_trends', {}),
-        "success_metrics": legacy_response.get('success_metrics', {}),
-        "analytics": create_analytics_data(),
-        "related_youtube_videos": legacy_response.get('related_youtube_videos', [])
-    }
+        else:
+            return {
+                'success': False,
+                'error': 'Agent did not return valid campaign JSON'
+            }
+        
+    except Exception as e:
+        print(f"Bedrock agent invocation failed: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
-def extract_and_structure_json(text_content):
+
+def tier2_fail_safe_orchestration(product_info, s3_info, target_markets, campaign_objectives, correlation_id):
     """
-    Try to extract JSON from text content that might contain markdown or other formatting.
+    Tier 2: Invoke Lambdas sequentially and aggregate results.
+    
+    1. Image analysis Lambda
+    2. Data enrichment Lambda
+    3. Cultural intelligence Lambda
+    4. Read aggregated record from DynamoDB
+    
+    Returns:
+        Dict with 'success', 'product_id', and 'aggregated_record' keys
     """
+    try:
+        # Step 1: Invoke image analysis Lambda
+        print("\nStep 1/3: Invoking image-analysis Lambda")
+        image_result = invoke_lambda_sync(
+            function_name=os.environ.get('LAMBDA_IMAGE_ANALYSIS', 'degenerals-mi-dev-image-analysis'),
+            payload={
+                'actionGroup': 'image-analysis',
+                'function': 'analyze_product_image',
+                'parameters': {
+                    'product_info': json.dumps(product_info),
+                    's3_info': json.dumps(s3_info)
+                }
+            }
+        )
+        
+        if not image_result.get('success'):
+            return {
+                'success': False,
+                'error': f"Image analysis failed: {image_result.get('error', 'Unknown')}"
+            }
+        
+        product_id = image_result.get('product_id')
+        user_id = image_result.get('user_id', 'anonymous')
+        print(f"Image analysis successful, product_id: {product_id}, user_id: {user_id}")
+        
+        # Step 2: Invoke data enrichment Lambda
+        print("\nStep 2/3: Invoking data-enrichment Lambda")
+        enrichment_result = invoke_lambda_sync(
+            function_name=os.environ.get('LAMBDA_DATA_ENRICHMENT', 'degenerals-mi-dev-data-enrichment'),
+            payload={
+                'actionGroup': 'data-enrichment',
+                'function': 'enrich_campaign_data',
+                'parameters': {
+                    'product_id': product_id,
+                    'user_id': user_id,
+                    'campaign_info': json.dumps(campaign_objectives)
+                }
+            }
+        )
+        
+        if not enrichment_result.get('success'):
+            print(f"Data enrichment warning: {enrichment_result.get('error', 'Unknown')}")
+            # Don't fail - continue with what we have
+        else:
+            print("Data enrichment successful")
+        
+        # Step 3: Invoke cultural intelligence Lambda
+        print("\nStep 3/3: Invoking cultural-intelligence Lambda")
+        cultural_result = invoke_lambda_sync(
+            function_name=os.environ.get('LAMBDA_CULTURAL_INTELLIGENCE', 'degenerals-mi-dev-cultural-intelligence'),
+            payload={
+                'actionGroup': 'cultural-intelligence',
+                'function': 'analyze_cultural_insights',
+                'parameters': {
+                    'product_id': product_id,
+                    'user_id': user_id,
+                    'target_markets': json.dumps(target_markets)
+                }
+            }
+        )
+        
+        if not cultural_result.get('success'):
+            print(f"Cultural intelligence warning: {cultural_result.get('error', 'Unknown')}")
+            # Don't fail - continue with what we have
+        else:
+            print("Cultural intelligence successful")
+        
+        # Ensure user_id is consistent throughout orchestration
+        user_id = cultural_result.get('user_id', user_id)
+        
+        # Step 4: Read aggregated record from DynamoDB
+        print("\nStep 4: Reading aggregated record from DynamoDB")
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'products')
+        table = dynamodb.Table(table_name)
+        
+        response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+        aggregated_record = response.get('Item', {})
+        
+        if not aggregated_record:
+            return {
+                'success': False,
+                'error': f"Could not retrieve product record {product_id} from DynamoDB"
+            }
+        
+        print(f"Retrieved aggregated record for product {product_id}")
+        
+        return {
+            'success': True,
+            'product_id': product_id,
+            'aggregated_record': aggregated_record
+        }
+        
+    except Exception as e:
+        print(f"Tier 2 orchestration error: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def invoke_lambda_sync(function_name, payload):
+    """
+    Synchronously invoke a Lambda function and return parsed result.
+    
+    Args:
+        function_name: Lambda function name
+        payload: Payload to send to Lambda
+        
+    Returns:
+        Dict with parsed response or error
+    """
+    try:
+        response = lambda_client.invoke(
+            FunctionName=function_name,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        # Parse response
+        if response.get('StatusCode') != 200:
+            return {
+                'success': False,
+                'error': f"Lambda returned status {response.get('StatusCode')}"
+            }
+        
+        response_payload = json.loads(response.get('Payload', '{}').read())
+        
+        # Handle both direct returns and wrapped responses
+        if isinstance(response_payload, dict):
+            if 'body' in response_payload:
+                body = json.loads(response_payload['body']) if isinstance(response_payload['body'], str) else response_payload['body']
+                return body
+            else:
+                return response_payload
+        
+        return response_payload
+        
+    except Exception as e:
+        print(f"Lambda invocation error for {function_name}: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def convert_decimals(obj):
+    """
+    Recursively convert DynamoDB Decimal objects to native Python types.
+    
+    This is necessary for JSON serialization, as Decimal objects are not
+    JSON serializable by default.
+    """
+    from decimal import Decimal
+    
+    if isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals(item) for item in obj]
+    elif isinstance(obj, Decimal):
+        # Convert to int if whole number, otherwise to float
+        if obj % 1 == 0:
+            return int(obj)
+        else:
+            return float(obj)
+    else:
+        return obj
+
+
+def synthesize_with_bedrock(product_id, aggregated_record, campaign_objectives, correlation_id):
+    """
+    Invoke Claude 3 Haiku model directly to synthesize campaign from aggregated data.
+    
+    Uses Bedrock InvokeModel API (not agent) with Claude 3 Haiku for cost-effective synthesis.
+    
+    Returns:
+        Dict with 'success' and 'campaign' keys
+    """
+    try:
+        # Convert DynamoDB Decimals to native Python types for JSON serialization
+        clean_record = convert_decimals(aggregated_record)
+        clean_objectives = convert_decimals(campaign_objectives)
+        
+        # Prepare synthesis prompt with complete data
+        product_name = clean_record.get('product_name', 'Unknown Product')
+        image_labels = clean_record.get('image_labels', [])
+        youtube_videos = clean_record.get('youtube_videos', [])
+        market_insights = clean_record.get('market_insights', {})
+        
+        # Get S3 key from aggregated record
+        s3_key = clean_record.get('s3_key', clean_record.get('image_key', 'unknown'))
+        
+        prompt = f"""You are a viral marketing campaign expert. Based on the complete market analysis data provided, synthesize a comprehensive marketing campaign strategy.
+
+Product: {product_name}
+Product ID: {product_id}
+
+Image Analysis (Product Features Detected):
+{json.dumps(image_labels[:5], indent=2)}
+
+YouTube Video Recommendations & Trends:
+{json.dumps(youtube_videos, indent=2)}
+
+Market Insights by Region:
+{json.dumps(market_insights, indent=2)}
+
+Campaign Objectives & Constraints:
+{json.dumps(clean_objectives, indent=2)}
+
+Return ONLY valid JSON matching this exact schema:
+
+{{
+  "product": {{
+    "description": "<product name and description, 20-500 chars>",
+    "image": {{
+      "public_url": "https://product-images-bucket-v2.s3.amazonaws.com/{s3_key}",
+      "s3_key": "{s3_key}",
+      "labels": {json.dumps([label.get('name', label) if isinstance(label, dict) else label for label in image_labels[:10]], indent=2)}
+    }}
+  }},
+  "content_ideas": [
+    {{
+      "platform": "<Instagram|TikTok|YouTube|LinkedIn|Twitter|Facebook>",
+      "topic": "<content topic, 10-200 chars>",
+      "engagement_score": <0-100>,
+      "caption": "<engaging caption, 20-500 chars>",
+      "hashtags": ["#tag1", "#tag2", "#tag3"]
+    }}
+  ],
+  "campaigns": [
+    {{
+      "name": "<campaign name, 10-100 chars>",
+      "duration": "<campaign duration>",
+      "posts_per_week": <1-10>,
+      "platforms": ["<platform 1>", "<platform 2>"],
+      "calendar": {{
+        "Week 1": "<week 1 activities>",
+        "Week 2": "<week 2 activities>",
+        "Week 3": "<week 3 activities>",
+        "Week 4": "<week 4 activities>"
+      }},
+      "adaptations": {{
+        "<platform>": "<platform-specific strategy>",
+        "<platform>": "<platform-specific strategy>"
+      }}
+    }}
+  ],
+  "generated_assets": {{
+    "image_prompts": [
+      "<detailed image generation prompt>",
+      "<detailed image generation prompt>"
+    ],
+    "video_scripts": [
+      {{
+        "type": "<Short form video|Long form video|Tutorial|Review>",
+        "content": "<script content>"
+      }}
+    ],
+    "email_templates": [
+      {{
+        "subject": "<email subject>",
+        "body": "<email body content>"
+      }}
+    ],
+    "blog_outlines": [
+      {{
+        "title": "<blog post title>",
+        "points": ["<point 1>", "<point 2>", "<point 3>"]
+      }}
+    ]
+  }},
+  "related_youtube_videos": {json.dumps(youtube_videos[:5], indent=2)},
+  "platform_recommendations": {{
+    "primary_platforms": ["<platform 1>", "<platform 2>"],
+    "rationale": "<why these platforms, 50-500 chars>"
+  }},
+  "market_insights": {{
+    "trending_content_types": ["<type 1>", "<type 2>"],
+    "cultural_considerations": ["<consideration 1>"],
+    "audience_preferences": ["<preference 1>", "<preference 2>"]
+  }}
+}}
+
+Requirements:
+- Include 2-5 content_ideas with different platforms
+- All hashtags must start with # and be 1-30 chars
+- Include realistic engagement scores based on platform and content type
+- Provide 1-3 complete campaign objects with detailed calendar and adaptations
+- Generate relevant image prompts, video scripts, email templates, and blog outlines
+- Use the image labels and market insights provided above
+- Include YouTube videos from the data provided
+
+Return ONLY the JSON object, no additional text or markdown."""
+
+        print(f"Invoking Amazon Nova Pro model for campaign synthesis")
+        
+        # Create Bedrock runtime client for model invocation
+        bedrock_client = boto3.client('bedrock-runtime')
+        
+        # Invoke Amazon Nova Pro model directly using inference profile ARN
+        # Nova uses a different request format than Claude
+        response = bedrock_client.invoke_model(
+            modelId='arn:aws:bedrock:eu-west-1::inference-profile/eu.amazon.nova-pro-v1:0',
+            contentType='application/json',
+            accept='application/json',
+            body=json.dumps({
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': [{'text': prompt}]
+                    }
+                ],
+                'inferenceConfig': {
+                    'maxTokens': 2048
+                }
+            })
+        )
+        
+        # Parse the response
+        response_body = json.loads(response['body'].read())
+        # Amazon Nova Pro response format: response_body['output']['message']['content'][0]['text']
+        model_response_text = response_body['output']['message']['content'][0]['text']
+        
+        print(f"Amazon Nova Pro response length: {len(model_response_text)} chars")
+        
+        # Try to extract JSON campaign from response
+        campaign = extract_campaign_json(model_response_text)
+        
+        if campaign:
+            print("Successfully extracted campaign JSON from model response")
+            return {
+                'success': True,
+                'campaign': campaign
+            }
+        else:
+            print("Could not extract valid campaign JSON from response")
+            print(f"Response text: {model_response_text[:500]}")
+            return {
+                'success': False,
+                'error': 'Model did not produce valid campaign JSON'
+            }
+        
+    except Exception as e:
+        print(f"Bedrock model synthesis failed: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def extract_campaign_json(response_text):
+    """
+    Extract valid campaign JSON from agent response text.
+    
+    Tries to find JSON object in response, validating it has campaign-like structure.
+    """
+    try:
+        # Try direct JSON parse
+        data = json.loads(response_text)
+        if is_valid_campaign(data):
+            return data
+    except:
+        pass
+    
+    # Try to find JSON object in text
     import re
-    
-    # Try to find JSON objects in the text
-    json_pattern = r'\{(?:[^{}]|{[^{}]*})*\}'
-    matches = re.findall(json_pattern, text_content, re.DOTALL)
-    
-    for match in matches:
+    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+    if json_match:
         try:
-            parsed = json.loads(match)
-            if isinstance(parsed, dict) and len(parsed) > 1:  # Must be a meaningful object
-                return structure_campaign_response(parsed)
-        except json.JSONDecodeError:
-            continue
+            data = json.loads(json_match.group())
+            if is_valid_campaign(data):
+                return data
+        except:
+            pass
     
     return None
 
-def create_fallback_structure(text_content):
-    """
-    DEPRECATED: This function should not be used anymore.
-    Agent must return proper JSON structure - no more fallbacks for text content.
-    """
-    print("ERROR: create_fallback_structure called - this should not happen with updated agent instructions")
-    raise Exception(f"Agent returned unstructured text instead of JSON. Agent malfunction detected. Text content: {text_content[:200]}...")
 
-def create_campaign_status(campaign_id, status, context_data):
-    """
-    Create initial campaign status record in DynamoDB.
-    """
-    try:
-        table_name = os.environ.get('CAMPAIGN_STATUS_TABLE_NAME')
-        if not table_name:
-            print("Warning: CAMPAIGN_STATUS_TABLE_NAME not set, skipping status tracking")
-            return
-        
-        table = dynamodb.Table(table_name)
-        
-        # Set TTL to 7 days from now
-        expires_at = int((datetime.utcnow() + timedelta(days=7)).timestamp())
-        
-        table.put_item(
-            Item={
-                'campaign_id': campaign_id,
-                'status': status,
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'context_data': context_data,
-                'expires_at': expires_at
+def is_valid_campaign(obj):
+    """Check if object looks like a valid campaign."""
+    if not isinstance(obj, dict):
+        return False
+    
+    # Should have at least one of these keys
+    campaign_keys = ['campaign', 'strategy', 'plan', 'theme', 'messaging']
+    return any(key in obj for key in campaign_keys) or len(obj) > 3
+
+
+def create_fallback_campaign(aggregated_record, campaign_objectives):
+    """Create a basic campaign structure from aggregated data matching instruction.md schema."""
+    product_name = aggregated_record.get('product_name', 'Product')
+    product_description = aggregated_record.get('product_description', f'{product_name} - innovative product')
+    image_labels = aggregated_record.get('image_labels', [])
+    product_category = aggregated_record.get('product_category', 'General')
+    s3_key = aggregated_record.get('s3_key', aggregated_record.get('image_key', 'unknown'))
+    
+    # Convert labels to simple string array
+    label_strings = []
+    if isinstance(image_labels, list):
+        for label in image_labels[:10]:
+            if isinstance(label, dict) and 'name' in label:
+                label_strings.append(label['name'])
+            elif isinstance(label, str):
+                label_strings.append(label)
+    
+    # If no labels, add some generic ones
+    if not label_strings:
+        label_strings = [product_category, 'Quality', 'Innovation']
+    
+    return {
+        'product': {
+            'description': f"{product_name} - {product_description[:200]}",
+            'image': {
+                'public_url': f"https://product-images-bucket-v2.s3.amazonaws.com/{s3_key}",
+                's3_key': s3_key,
+                'labels': label_strings
             }
-        )
-        print(f"Created campaign status record: {campaign_id} - {status}")
-    except Exception as e:
-        print(f"Error creating campaign status: {str(e)}")
-
-def update_campaign_status(campaign_id, status, result_data):
-    """
-    Update campaign status record with results.
-    """
-    try:
-        table_name = os.environ.get('CAMPAIGN_STATUS_TABLE_NAME')
-        if not table_name:
-            print("Warning: CAMPAIGN_STATUS_TABLE_NAME not set, skipping status update")
-            return
-        
-        table = dynamodb.Table(table_name)
-        
-        table.update_item(
-            Key={'campaign_id': campaign_id},
-            UpdateExpression='SET #status = :status, updated_at = :updated_at, result_data = :result_data',
-            ExpressionAttributeNames={'#status': 'status'},
-            ExpressionAttributeValues={
-                ':status': status,
-                ':updated_at': datetime.utcnow().isoformat(),
-                ':result_data': result_data
+        },
+        'content_ideas': [
+            {
+                'platform': 'Instagram',
+                'topic': f'Showcase {product_name} lifestyle integration',
+                'engagement_score': 75,
+                'caption': f'Discover the innovation behind {product_name}. Experience quality that transforms your daily routine.',
+                'hashtags': ['#Innovation', '#Quality', f'#{product_category}', '#Lifestyle', '#Premium']
+            },
+            {
+                'platform': 'TikTok',
+                'topic': f'{product_name} unboxing and first impressions',
+                'engagement_score': 85,
+                'caption': f'Unboxing {product_name} - you won\'t believe what\'s inside! 🔥',
+                'hashtags': ['#Unboxing', f'#{product_category}', '#Review', '#MustHave']
+            },
+            {
+                'platform': 'YouTube',
+                'topic': f'Complete {product_name} review and demonstration',
+                'engagement_score': 80,
+                'caption': f'In-depth review of {product_name}. Is it worth it? Watch to find out!',
+                'hashtags': ['#ProductReview', f'#{product_category}', '#HonestReview', '#TechReview']
             }
-        )
-        print(f"Updated campaign status: {campaign_id} - {status}")
-    except Exception as e:
-        print(f"Error updating campaign status: {str(e)}")
-
-def emit_campaign_completion_event(campaign_id, campaign_data, context_data):
-    """
-    Emit campaign completion event to EventBridge for async visual asset generation.
-    """
-    try:
-        event_bus_name = os.environ.get('CAMPAIGN_EVENTS_BUS_NAME')
-        if not event_bus_name:
-            print("Warning: CAMPAIGN_EVENTS_BUS_NAME not set, skipping event emission")
-            return
-        
-        event_detail = {
-            'campaign_id': campaign_id,
-            'status': 'completed',
-            'campaign_data': campaign_data,
-            'context_data': context_data,
-            'timestamp': datetime.utcnow().isoformat()
-        }
-        
-        eventbridge.put_events(
-            Entries=[
+        ],
+        'campaigns': [
+            {
+                'name': f'{product_name} Viral Marketing Campaign',
+                'duration': campaign_objectives.get('campaign_duration', '30 days'),
+                'posts_per_week': 3,
+                'platforms': ['Instagram', 'TikTok', 'YouTube'],
+                'calendar': {
+                    'Week 1': f'Introduce the campaign with stunning visuals and tips for {product_name} usage',
+                    'Week 2': 'Share user-generated content and customer testimonials',
+                    'Week 3': 'Focus on product features and benefits with detailed content',
+                    'Week 4': 'Wrap up with contests and calls-to-action for engagement'
+                },
+                'adaptations': {
+                    'Instagram': 'Use high-quality images and short videos showcasing product features',
+                    'TikTok': 'Create short, engaging videos with trending music and quick tips',
+                    'YouTube': 'Post comprehensive reviews and tutorials for in-depth content'
+                }
+            },
+            {
+                'name': f'{product_name} Community Building Initiative',
+                'duration': '45 days',
+                'posts_per_week': 2,
+                'platforms': ['Instagram', 'Facebook', 'LinkedIn'],
+                'calendar': {
+                    'Week 1': 'Launch community challenges and engagement activities',
+                    'Week 2': 'Share customer stories and success cases',
+                    'Week 3': 'Host Q&A sessions and expert interviews',
+                    'Week 4': 'Run contests and giveaways to boost participation',
+                    'Week 5': 'Analyze results and plan follow-up activities',
+                    'Week 6': 'Celebrate community achievements and announce winners'
+                },
+                'adaptations': {
+                    'Instagram': 'Focus on Stories, Reels, and community polls',
+                    'Facebook': 'Create groups and events for community interaction',
+                    'LinkedIn': 'Share professional insights and industry connections'
+                }
+            }
+        ],
+        'generated_assets': {
+            'image_prompts': [
+                f'A sleek {product_name} displayed in a modern, well-lit setting showcasing its key features and premium quality',
+                f'Action shot of {product_name} in use, highlighting performance and user experience',
+                f'Lifestyle image showing {product_name} integrated into daily life with happy, satisfied users'
+            ],
+            'video_scripts': [
                 {
-                    'Source': 'degenerals.campaign',
-                    'DetailType': 'Campaign Analysis Completed',
-                    'Detail': json.dumps(event_detail),
-                    'EventBusName': event_bus_name
+                    'type': 'Short form video',
+                    'content': f'Quick tour of {product_name} features! From unboxing to first use, see why this is a game-changer. Perfect for social media highlights.'
+                },
+                {
+                    'type': 'Long form video',
+                    'content': f'In-depth review of {product_name}: We break down every feature, test performance, and share real user experiences. Complete guide for potential buyers.'
+                }
+            ],
+            'email_templates': [
+                {
+                    'subject': f'Discover the Power of {product_name}',
+                    'body': f'Hello [Name],\n\nWe\'re excited to introduce you to {product_name}, the innovative solution you\'ve been waiting for. Experience [key benefit] and transform your [use case].\n\nLearn more: [link]\n\nBest regards,\nThe {product_name} Team'
+                },
+                {
+                    'subject': f'Your {product_name} Success Story',
+                    'body': f'Hi [Name],\n\nThank you for choosing {product_name}! Here are some tips to get the most out of your purchase and join our community of satisfied users.\n\n[Personalized tips based on usage]\n\nShare your experience: [link]\n\nHappy exploring!\nThe {product_name} Team'
+                }
+            ],
+            'blog_outlines': [
+                {
+                    'title': f'Why {product_name} is Revolutionizing {product_category}',
+                    'points': [
+                        f'Introduction to {product_name} and its unique value proposition',
+                        'Key features that set it apart from competitors',
+                        'Real-world applications and use cases',
+                        'Customer testimonials and success stories',
+                        'Future developments and roadmap'
+                    ]
+                },
+                {
+                    'title': f'Getting Started with {product_name}: A Complete Guide',
+                    'points': [
+                        'Unboxing and initial setup process',
+                        'Essential features and how to use them',
+                        'Tips and tricks for optimal performance',
+                        'Common questions and troubleshooting',
+                        'Resources for further learning and support'
+                    ]
                 }
             ]
-        )
-        print(f"Emitted campaign completion event for: {campaign_id}")
-    except Exception as e:
-        print(f"Error emitting campaign completion event: {str(e)}")
-
-def create_response(status_code, body):
-    """
-    Create a standardized API Gateway response.
-    """
-    return {
-        'statusCode': status_code,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         },
-        'body': json.dumps(body)
-    }
-
-def create_product_section(request_data):
-    """Create product section with image data if available."""
-    product = request_data.get('product', {})
-    s3_info = request_data.get('s3_info', {})
-    
-    product_section = {
-        "description": product.get('description', product.get('name', 'Product description'))
-    }
-    
-    if s3_info:
-        product_section["image"] = {
-            "public_url": f"https://{s3_info.get('bucket', 'product-images-bucket')}.s3.amazonaws.com/{s3_info.get('key', '')}",
-            "s3_key": s3_info.get('key', ''),
-            "labels": []  # Would be populated from image analysis
-        }
-    
-    return product_section
-
-def create_content_ideas_from_platform_content(platform_content):
-    """Convert platform content into content ideas format - should only be used if agent provided real platform content."""
-    content_ideas = []
-    
-    # Only process if platform_content has actual data from agent - no fallbacks
-    if not platform_content:
-        print("ERROR: Agent did not provide platform_content - this indicates the agent failed to call action groups properly")
-        return []
-    
-    # Generate content ideas from platform content
-    for platform, content in platform_content.items():
-        if isinstance(content, dict):
-            sample_post = content.get('sample_post', '')
-            hashtags = content.get('hashtags', [])
-            themes = content.get('content_themes', [])
-            
-            # Create meaningful topic based on platform and themes
-            topic_mapping = {
-                'instagram': f"{', '.join(themes[:2]) if themes else 'Visual storytelling'} for Instagram",
-                'tiktok': f"{', '.join(themes[:2]) if themes else 'Short-form content'} for TikTok",
-                'youtube': f"{', '.join(themes[:2]) if themes else 'Educational content'} for YouTube"
-            }
-            
-            idea = {
-                "platform": platform.title(),
-                "topic": topic_mapping.get(platform.lower(), f"{platform.title()} content strategy"),
-                "engagement_score": 85 + random.randint(0, 10),
-                "caption": sample_post if sample_post else f"Engaging {platform} content for your audience",
-                "hashtags": hashtags if hashtags else [f"#{platform.lower()}", "#content", "#marketing"]
-            }
-            content_ideas.append(idea)
-    
-    # Ensure we always have at least 3 content ideas
-    if len(content_ideas) < 3:
-        platforms_needed = ['Instagram', 'TikTok', 'YouTube']
-        existing_platforms = {idea['platform'] for idea in content_ideas}
-        
-        for platform in platforms_needed:
-            if platform not in existing_platforms:
-                idea = {
-                    "platform": platform,
-                    "topic": f"Strategic {platform.lower()} content creation",
-                    "engagement_score": 80 + random.randint(5, 15),
-                    "caption": f"Create compelling {platform.lower()} content that drives engagement and builds your brand",
-                    "hashtags": [f"#{platform.lower()}", "#strategy", "#engagement", "#brand"]
-                }
-                content_ideas.append(idea)
-    
-    return content_ideas
-
-def create_campaign_sections_from_legacy(legacy_response):
-    """Create campaign sections from legacy response structure."""
-    campaigns = []
-    platform_content = legacy_response.get('platform_content', {})
-    campaign_strategy = legacy_response.get('campaign_strategy', {})
-    
-    if platform_content:
-        # Create a main campaign based on available data
-        campaign = {
-            "name": "Multi-Platform Marketing Campaign",
-            "duration": "4 weeks",
-            "posts_per_week": 3,
-            "platforms": list(platform_content.keys()),
-            "calendar": {
-                "Week 1": "Launch campaign with engaging content and brand awareness focus",
-                "Week 2": "Build engagement through interactive content and community building",
-                "Week 3": "Share educational content and product demonstrations",
-                "Week 4": "Drive conversions with special offers and testimonials"
-            },
-            "adaptations": {}
-        }
-        
-        # Add platform-specific adaptations from platform content
-        for platform, content in platform_content.items():
-            if isinstance(content, dict):
-                themes = content.get('content_themes', [])
-                formats = content.get('recommended_formats', [])
-                adaptation = f"Focus on {', '.join(themes[:2]) if themes else 'engaging content'} using {', '.join(formats[:2]) if formats else 'varied formats'}"
-                campaign["adaptations"][platform.title()] = adaptation
-        
-        campaigns.append(campaign)
-    
-    return campaigns
-
-def create_campaign_sections(agent_data):
-    """Create detailed campaign sections from agent data - should only be used if agent provided real data."""
-    campaigns = []
-    platform_content = agent_data.get('platform_content', {})
-    
-    # Only process if platform_content has actual data from agent - no fallbacks
-    if not platform_content:
-        print("ERROR: Agent did not provide platform_content for campaign creation - this indicates action groups were not called properly")
-        return []
-    
-    # Create campaign from platform content
-    campaign = {
-        "name": "Multi-Platform Marketing Campaign",
-        "duration": "4 weeks",
-        "posts_per_week": 3,
-        "platforms": list(platform_content.keys()),
-        "calendar": {
-            "Week 1": "Campaign launch with awareness building and brand introduction",
-            "Week 2": "Engagement focus with interactive content and community building",
-            "Week 3": "Educational content highlighting product benefits and features",
-            "Week 4": "Conversion phase with testimonials and strong calls-to-action"
+        'related_youtube_videos': aggregated_record.get('youtube_videos', []),
+        'platform_recommendations': {
+            'primary_platforms': ['Instagram', 'TikTok', 'YouTube'],
+            'rationale': f'Selected platforms based on target audience demographics and {product_category} category performance. Instagram for visual storytelling, TikTok for viral potential, and YouTube for detailed product demonstrations.'
         },
-        "adaptations": {}
-    }
-    
-    # Add platform-specific adaptations
-    for platform, content in platform_content.items():
-        if isinstance(content, dict):
-            themes = content.get('content_themes', [])
-            formats = content.get('recommended_formats', [])
-            
-            platform_adaptations = {
-                'instagram': "Visual storytelling with high-quality images, stories, and reels",
-                'tiktok': "Short engaging videos with trending audio and creative effects",
-                'youtube': "Longer form educational and entertaining content with detailed descriptions",
-                'facebook': "Community-focused content with detailed posts and live interactions"
-            }
-            
-            if themes and formats:
-                adaptation = f"Focus on {', '.join(themes[:2])} using {', '.join(formats[:2])}"
-            else:
-                adaptation = platform_adaptations.get(platform.lower(), f"Platform-optimized content for {platform}")
-                
-            campaign["adaptations"][platform.title()] = adaptation
-    
-    campaigns.append(campaign)
-    return campaigns
-
-def create_generated_assets_section(agent_data):
-    """Create generated assets section with prompts and scripts - should only be used if agent provided real data."""
-    visual_insights = agent_data.get('visual_insights', {})
-    platform_content = agent_data.get('platform_content', {})
-    
-    assets = {
-        "image_prompts": [],
-        "video_scripts": [],
-        "email_templates": [],
-        "blog_outlines": []
-    }
-    
-    # Only create assets if we have real visual insights from agent
-    if visual_insights and visual_insights.get('visual_themes'):
-        themes = visual_insights.get('visual_themes', [])
-        elements = visual_insights.get('primary_visual_elements', [])
-        
-        for i, theme in enumerate(themes[:3]):
-            element = elements[i] if i < len(elements) else "product"
-            prompt = f"A {theme.lower()} styled image featuring {element}, professional photography with modern aesthetic and brand-consistent styling"
-            assets["image_prompts"].append(prompt)
-    else:
-        print("WARNING: No visual insights provided by agent - image prompts will be empty")
-        assets["image_prompts"] = []
-    
-    # Create video scripts from platform content only if provided by agent
-    if platform_content:
-        youtube_content = platform_content.get('youtube', {})
-        video_ideas = youtube_content.get('video_ideas', [])
-        
-        if video_ideas:
-            for i, idea in enumerate(video_ideas[:2]):
-                script_type = "Long form video" if i == 0 else "Short form video"
-                script = {
-                    "type": script_type,
-                    "content": f"Script for {idea}: Hook the audience with compelling opening, deliver valuable content with clear structure, and end with strong call-to-action encouraging engagement."
-                }
-                assets["video_scripts"].append(script)
-        else:
-            print("WARNING: No video ideas provided by agent in platform content")
-            assets["video_scripts"] = []
-    else:
-        print("WARNING: No platform content provided by agent - video scripts will be empty")
-        assets["video_scripts"] = []
-    
-    # Email templates and blog outlines - only provide if we have actual agent data
-    if platform_content or visual_insights:
-        assets["email_templates"] = [
-            {
-                "subject": "Your Marketing Campaign is Ready to Launch!",
-                "body": "Hi [Name],\n\nGreat news! We've created a comprehensive marketing strategy tailored specifically for your product. The campaign includes platform-specific content, engagement strategies, and conversion-focused messaging.\n\nKey highlights:\n• Multi-platform content calendar\n• Targeted audience insights\n• Performance tracking metrics\n\nReady to see amazing results? Let's launch your campaign today!\n\nBest regards,\nYour Marketing Team"
-            },
-            {
-                "subject": "Boost Your Brand with These Content Ideas",
-                "body": "Hello [Name],\n\nWe've curated exclusive content ideas that will elevate your brand presence and drive meaningful engagement with your audience.\n\nInside you'll find:\n✓ Platform-specific content strategies\n✓ Trending hashtags and keywords\n✓ Engagement optimization tips\n✓ Conversion-focused call-to-actions\n\nStart implementing these strategies today and watch your brand grow!\n\nCheers,\nMarketing Strategy Team"
-            }
-        ]
-        
-        assets["blog_outlines"] = [
-            {
-                "title": "The Complete Guide to Modern Marketing Success",
-                "points": [
-                    "Understanding your target audience and their preferences",
-                    "Creating platform-specific content that resonates",
-                    "Measuring campaign performance and optimizing for results",
-                    "Building long-term brand loyalty through consistent engagement"
-                ]
-            },
-            {
-                "title": "5 Proven Strategies to Boost Your Brand Engagement",
-                "points": [
-                    "Leverage user-generated content to build authenticity",
-                    "Master the art of storytelling across different platforms",
-                    "Use data-driven insights to optimize content timing",
-                    "Create interactive experiences that encourage participation"
-                ]
-            }
-        ]
-    else:
-        print("WARNING: No agent data provided - email templates and blog outlines will be empty")
-        assets["email_templates"] = []
-        assets["blog_outlines"] = []
-    
-    return assets
-
-def create_comprehensive_fallback_structure(request_data):
-    """Create a comprehensive fallback structure when agent response parsing fails."""
-    product = request_data.get('product', {})
-    
-    return {
-        "product": create_product_section(request_data),
-        "content_ideas": [
-            {
-                "platform": "Instagram",
-                "topic": f"{product.get('name', 'Product')} showcase",
-                "engagement_score": 85,
-                "caption": f"Discover the amazing features of {product.get('name', 'our product')}!",
-                "hashtags": ["#product", "#marketing", "#engagement"]
-            }
-        ],
-        "campaigns": [
-            {
-                "name": "Product Launch Campaign",
-                "duration": "4 weeks",
-                "posts_per_week": 3,
-                "platforms": ["Instagram", "TikTok", "YouTube"],
-                "calendar": {
-                    "Week 1": "Product introduction and feature highlights",
-                    "Week 2": "User testimonials and social proof",
-                    "Week 3": "Educational content and tutorials",
-                    "Week 4": "Call to action and conversion focus"
-                },
-                "adaptations": {
-                    "Instagram": "Visual storytelling with high-quality images and reels",
-                    "TikTok": "Short engaging videos with trending sounds",
-                    "YouTube": "Detailed product demonstrations and reviews"
-                }
-            }
-        ],
-        "generated_assets": create_generated_assets_section({}),
-        "analytics": create_analytics_data(),
-        "related_youtube_videos": []
-    }
-
-def create_comprehensive_campaign_response(agent_response, request_data, campaign_id):
-    """
-    Create the comprehensive campaign response structure from agent response.
-    Now requires agent to provide real data - no more fallbacks for critical sections.
-    
-    Args:
-        agent_response: The structured response from the Bedrock agent
-        request_data: Original request data
-        campaign_id: Generated campaign ID
-    
-    Returns:
-        Comprehensive response matching the expected frontend structure
-    """
-    try:
-        # If agent response already has the comprehensive structure, use it directly with enhancements
-        if all(key in agent_response for key in ['product', 'content_ideas', 'campaigns', 'generated_assets']):
-            comprehensive_response = agent_response.copy()
-            comprehensive_response.update({
-                "campaign_id": campaign_id,
-                "status": "completed",
-                "message": "Comprehensive campaign response created successfully."
-            })
-            
-            # Only add analytics if not provided by agent
-            if 'analytics' not in comprehensive_response:
-                comprehensive_response['analytics'] = create_analytics_data()
-                
-            # Validate critical data is present
-            if not comprehensive_response.get('related_youtube_videos'):
-                print("ERROR: Agent did not provide related YouTube videos - this indicates data enrichment was not called")
-                comprehensive_response['message'] = "Campaign created but missing data enrichment results."
-                
-            return comprehensive_response
-        
-        # Otherwise, create comprehensive response structure from legacy format
-        # But only if we have real platform content from agent
-        platform_content = agent_response.get('platform_content', {})
-        market_trends = agent_response.get('market_trends', {})
-        
-        if not platform_content:
-            print("ERROR: Agent did not provide platform_content - this indicates action groups were not called properly")
-            raise Exception("Agent failed to call required action groups - no platform content available")
-        
-        if not market_trends:
-            print("ERROR: Agent did not provide market_trends - this indicates data enrichment was not called")
-            raise Exception("Agent failed to call data enrichment - no market trends available")
-        
-        comprehensive_response = {
-            "campaign_id": campaign_id,
-            "status": "completed",
-            "message": "Comprehensive campaign response created from agent data.",
-            "product": agent_response.get('product', create_product_section(request_data)),
-            "content_ideas": create_content_ideas_from_platform_content(platform_content),
-            "campaigns": create_campaign_sections(agent_response),
-            "generated_assets": create_generated_assets_section(agent_response),
-            "platform_content": platform_content,
-            "market_trends": market_trends,
-            "success_metrics": agent_response.get('success_metrics', {}),
-            "analytics": agent_response.get('analytics', create_analytics_data()),
-            "related_youtube_videos": agent_response.get('related_youtube_videos', [])
+        'market_insights': {
+            'trending_content_types': [
+                'Unboxing videos',
+                'User testimonials',
+                'Behind-the-scenes content',
+                'Tutorial and how-to content'
+            ],
+            'cultural_considerations': [
+                'Emphasize quality and innovation for global markets',
+                'Adapt messaging for regional preferences',
+                'Use inclusive and authentic representation'
+            ],
+            'audience_preferences': [
+                'Authentic, non-promotional content',
+                'Influencer partnerships and UGC',
+                'Short-form video content',
+                'Interactive and educational content'
+            ]
         }
-        
-        # Final validation
-        if not comprehensive_response.get('related_youtube_videos'):
-            print("ERROR: Final response missing YouTube videos - agent did not properly integrate data enrichment results")
-            comprehensive_response['message'] = "Campaign created but missing data enrichment integration."
-        
-        return comprehensive_response
-        
-    except Exception as e:
-        print(f"Error creating comprehensive campaign response: {str(e)}")
-        # Re-raise the exception to force proper error handling instead of returning fallbacks
-        raise Exception(f"Failed to create comprehensive campaign response - agent did not provide required data: {str(e)}")
+    }
 
-def create_analytics_data():
-    """Create analytics data for KPI cards - should be based on agent analysis, but fallback allowed for analytics only."""
-    print("WARNING: Using fallback analytics data - agent should provide real market-based analytics")
+
+def create_error_response(error_message):
+    """Create an error response."""
     return {
-        "estimatedReach": random.randint(100000, 500000),
-        "projectedEngagement": round(random.uniform(7.5, 12.0), 1),
-        "conversionRate": round(random.uniform(1.5, 4.0), 1),
-        "roi": round(random.uniform(3.0, 6.0), 1)
+        'statusCode': 400,
+        'body': json.dumps({
+            'success': False,
+            'error': error_message
+        })
     }

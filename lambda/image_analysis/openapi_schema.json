@@ -2,14 +2,14 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Image Analysis API",
-    "description": "Analyzes product images using Amazon Rekognition to detect labels, objects, and generate campaign recommendations. Results are stored in DynamoDB for campaign tracking.",
-    "version": "1.0.0"
+    "description": "Performs image analysis using Amazon Rekognition to detect labels, objects, and generate marketing insights. Results are stored in DynamoDB with analysis_status='image_analyzed'. Compatible with Amazon Bedrock Agent Action Groups.",
+    "version": "3.0.0"
   },
   "paths": {
     "/analyze-product-image": {
       "post": {
-        "summary": "Analyze product image for campaign insights",
-        "description": "Uses Amazon Rekognition to analyze product images, detect labels and objects, and generate marketing campaign recommendations. The analysis results are stored in DynamoDB for future reference.",
+        "summary": "Analyze product image and generate marketing insights",
+        "description": "Uses Amazon Rekognition to analyze product images from S3, extract top detected labels, and store structured results in DynamoDB with analysis_status='image_analyzed'. Returns product_id and analysis details for use in subsequent enrichment steps.",
         "operationId": "analyze_product_image",
         "requestBody": {
           "required": true,
@@ -20,40 +20,51 @@
                 "properties": {
                   "product_info": {
                     "type": "object",
-                    "description": "Product information",
+                    "description": "JSON object containing product details",
                     "properties": {
                       "name": {
                         "type": "string",
-                        "description": "Product name"
+                        "example": "Bose QuietComfort 45 Headphones"
                       },
                       "description": {
                         "type": "string",
-                        "description": "Product description"
+                        "example": "Wireless noise-cancelling headphones with superior sound quality."
                       },
                       "category": {
                         "type": "string",
-                        "description": "Product category"
+                        "example": "Electronics"
                       }
                     },
                     "required": ["name"]
                   },
                   "s3_info": {
                     "type": "object",
-                    "description": "S3 location of the image to analyze",
+                    "description": "JSON object specifying the S3 image location",
                     "properties": {
                       "bucket": {
                         "type": "string",
-                        "description": "S3 bucket name"
+                        "example": "marketing-assets-sandbox"
                       },
                       "key": {
                         "type": "string",
-                        "description": "S3 object key"
+                        "example": "product-images/bose-qc45.png"
                       }
                     },
-                    "required": ["bucket", "key"]
+                    "required": ["key"]
                   }
                 },
                 "required": ["product_info", "s3_info"]
+              },
+              "example": {
+                "product_info": {
+                  "name": "Bose QuietComfort 45 Headphones",
+                  "description": "Wireless noise-cancelling headphones with world-class sound.",
+                  "category": "Electronics"
+                },
+                "s3_info": {
+                  "bucket": "marketing-assets-sandbox",
+                  "key": "product-images/bose-qc45.png"
+                }
               }
             }
           }
@@ -70,137 +81,50 @@
                       "type": "boolean",
                       "example": true
                     },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "product_id": {
-                          "type": "string",
-                          "description": "Unique identifier for the analyzed product"
-                        },
-                        "product_name": {
-                          "type": "string",
-                          "description": "Name of the analyzed product"
-                        },
-                        "detected_labels": {
-                          "type": "array",
-                          "description": "Top 10 detected labels from Rekognition",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "description": "Label name"
-                              },
-                              "confidence": {
-                                "type": "number",
-                                "description": "Confidence score (0-100)"
-                              },
-                              "categories": {
-                                "type": "array",
-                                "description": "Label categories",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "instances": {
-                                "type": "integer",
-                                "description": "Number of instances detected"
-                              }
-                            }
-                          }
-                        },
-                        "confidence_summary": {
-                          "type": "object",
-                          "description": "Summary of detection confidence",
-                          "properties": {
-                            "high_confidence_labels": {
-                              "type": "array",
-                              "description": "Labels with confidence >= 80%",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "confidence": {
-                                    "type": "number"
-                                  },
-                                  "categories": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "instances": {
-                                    "type": "integer"
-                                  }
-                                }
-                              }
+                    "product_id": {
+                      "type": "string",
+                      "description": "Unique identifier for the analyzed product (UUID)",
+                      "example": "a1b2c3d4-e5f6-7890-ab12-cd34ef56gh78"
+                    },
+                    "product_name": {
+                      "type": "string",
+                      "example": "Bose QuietComfort 45 Headphones"
+                    },
+                    "detected_labels": {
+                      "type": "array",
+                      "description": "Top 10 detected labels with confidence and categories",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "example": "Headphones"
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "example": 98.74
+                          },
+                          "categories": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
                             },
-                            "total_labels_detected": {
-                              "type": "integer",
-                              "description": "Total number of labels detected"
-                            }
-                          }
-                        },
-                        "analysis_timestamp": {
-                          "type": "string",
-                          "description": "Timestamp when analysis was performed"
-                        },
-                        "storage_location": {
-                          "type": "string",
-                          "description": "DynamoDB storage location"
-                        },
-                        "recommendations": {
-                          "type": "object",
-                          "description": "Campaign recommendations based on image analysis",
-                          "properties": {
-                            "primary_visual_elements": {
-                              "type": "array",
-                              "description": "Key visual elements detected",
-                              "items": {
-                                "type": "string"
-                              }
-                            },
-                            "suggested_hashtags": {
-                              "type": "array",
-                              "description": "Recommended hashtags for social media",
-                              "items": {
-                                "type": "string"
-                              }
-                            },
-                            "content_themes": {
-                              "type": "array",
-                              "description": "Content themes identified",
-                              "items": {
-                                "type": "string"
-                              }
-                            },
-                            "platform_suitability": {
-                              "type": "object",
-                              "description": "Platform suitability assessment",
-                              "properties": {
-                                "Instagram": {
-                                  "type": "string",
-                                  "enum": ["High", "Medium", "Low"]
-                                },
-                                "TikTok": {
-                                  "type": "string",
-                                  "enum": ["High", "Medium", "Low"]
-                                },
-                                "LinkedIn": {
-                                  "type": "string",
-                                  "enum": ["High", "Medium", "Low"]
-                                },
-                                "Facebook": {
-                                  "type": "string",
-                                  "enum": ["High", "Medium", "Low"]
-                                }
-                              }
-                            }
+                            "example": ["Electronics", "Audio"]
+                          },
+                          "instances": {
+                            "type": "integer",
+                            "example": 1
                           }
                         }
                       }
+                    },
+                    "analysis_status": {
+                      "type": "string",
+                      "example": "image_analyzed"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "example": "2025-10-18T13:30:00Z"
                     }
                   }
                 }
@@ -208,7 +132,7 @@
             }
           },
           "400": {
-            "description": "Bad request - missing required parameters, invalid image, or analysis failed",
+            "description": "Invalid input or image not found in S3",
             "content": {
               "application/json": {
                 "schema": {
@@ -219,15 +143,45 @@
                       "example": false
                     },
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "example": "Image not found in S3: s3://marketing-assets-sandbox/product-images/bose-qc45.png"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal error: Rekognition analysis failed"
                     }
                   }
                 }
               }
             }
           }
+        },
+        "x-amazon-bedrock-integration": {
+          "actionGroup": "image-analysis",
+          "function": "analyze_product_image",
+          "apiType": "REST",
+          "httpMethod": "POST"
         }
       }
     }
+  },
+  "components": {
+    "schemas": {}
   }
 }

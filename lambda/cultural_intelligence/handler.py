@@ -1,22 +1,22 @@
 import json
 import boto3
 import os
-import uuid
-import traceback
 from datetime import datetime
-from decimal import Decimal
 from botocore.exceptions import ClientError
 
 # Initialize AWS clients
-bedrock_agent_client = boto3.client('bedrock-agent-runtime')
 dynamodb = boto3.resource('dynamodb')
 
 def lambda_handler(event, context):
     """
-    Lambda handler for cultural intelligence queries using Bedrock Knowledge Bases.
-    Provides cross-cultural adaptation insights and market-specific intelligence.
+    Lambda handler for cultural intelligence and insights.
     
-    Handles both direct invocation and Bedrock agent invocation formats.
+    Can be invoked by:
+    1. Bedrock agent (action group) - Returns Bedrock format response with product_id
+    2. Intent parser Lambda - Returns JSON response with product_id
+    
+    Accepts product_id and enriches existing product record with cultural insights.
+    Updates DynamoDB record with cultural_status='culturally_enriched'
     """
     try:
         print(f"Received event: {json.dumps(event)}")
@@ -25,7 +25,7 @@ def lambda_handler(event, context):
         if 'messageVersion' in event and 'requestBody' in event:
             return handle_bedrock_agent_invocation(event, context)
         
-        # Handle direct invocation format
+        # Handle direct invocation from intent parser
         action_group = event.get('actionGroup')
         function_name = event.get('function')
         parameters = event.get('parameters', {})
@@ -41,718 +41,355 @@ def lambda_handler(event, context):
         if action_group != 'cultural-intelligence':
             return create_error_response(f"Invalid action group: {action_group}")
         
-        if function_name == 'get_cultural_insights':
-            return handle_cultural_insights(parameters, context)
-        elif function_name == 'get_market_intelligence':
-            return handle_market_intelligence(parameters, context)
-        elif function_name == 'adapt_campaign_content':
-            return handle_content_adaptation(parameters, context)
+        if function_name == 'analyze_cultural_insights':
+            return handle_cultural_intelligence(parameters, context)
         else:
             return create_error_response(f"Unknown function: {function_name}")
             
     except Exception as e:
         print(f"Error in lambda_handler: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return create_error_response(f"Lambda execution failed: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}")
 
-def handle_bedrock_agent_invocation(event, context):
-    """Handle Bedrock agent invocation format."""
+
+def handle_cultural_intelligence(parameters, context):
+    """
+    Handle cultural intelligence analysis for a product campaign.
+    
+    Args:
+        parameters: Dictionary containing product_id, user_id and target markets
+        context: Lambda context object
+        
+    Returns:
+        Dictionary with cultural insights and product_id
+    """
     try:
-        api_path = event.get('apiPath', '')
-        function_name = event.get('function', '')
+        # Extract parameters
+        product_id = (parameters.get('product_id') or '').strip()
+        user_id = (parameters.get('user_id') or 'anonymous').strip()
+        target_markets_raw = parameters.get('target_markets', {})
         
-        # Extract parameters from Bedrock request body
-        request_body = event.get('requestBody', {})
-        content = request_body.get('content', {})
+        if not product_id:
+            return create_error_response("product_id is required")
         
-        # Parse the request body content
-        json_body = None
-        if 'application/json' in content and isinstance(content['application/json'], dict):
-            app_json = content['application/json']
-            if 'properties' in app_json:
-                # Convert properties array to proper JSON structure
-                json_body = {}
-                for prop in app_json['properties']:
-                    prop_name = prop.get('name')
-                    prop_value = prop.get('value', '')
-                    json_body[prop_name] = prop_value
-        
-        if not json_body:
-            return create_bedrock_error_response("Could not extract valid JSON from Bedrock request", api_path)
-        
-        print(f"Constructed JSON body: {json.dumps(json_body, default=str)}")
-        
-        if function_name == 'get_cultural_insights' or api_path == '/cultural-insights':
-            result = handle_cultural_insights(json_body, context)
-        elif function_name == 'get_market_intelligence' or api_path == '/market-intelligence':
-            result = handle_market_intelligence(json_body, context)
-        elif function_name == 'adapt_campaign_content' or api_path == '/adapt-content':
-            result = handle_content_adaptation(json_body, context)
+        # Parse target_markets if it's a JSON string
+        if isinstance(target_markets_raw, str):
+            try:
+                target_markets = json.loads(target_markets_raw)
+            except json.JSONDecodeError:
+                target_markets = {}
         else:
-            return create_bedrock_error_response(f"Unknown function: {function_name}, path: {api_path}", api_path)
+            target_markets = target_markets_raw if isinstance(target_markets_raw, dict) else {}
         
-        # Convert response to Bedrock format
-        if result.get('statusCode') == 200:
-            body_data = json.loads(result['body'])
-            return {
-                'messageVersion': '1.0',
-                'response': {
-                    'actionGroup': 'cultural-intelligence',
-                    'apiPath': api_path,
-                    'httpMethod': 'POST',
-                    'httpStatusCode': 200,
-                    'responseBody': {
-                        'application/json': {
-                            'body': json.dumps(body_data)
-                        }
-                    }
-                }
-            }
-        else:
-            error_data = json.loads(result['body'])
-            return create_bedrock_error_response(error_data.get('error', 'Unknown error'), api_path)
-            
-    except Exception as e:
-        print(f"Error in handle_bedrock_agent_invocation: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return create_bedrock_error_response(f"Processing error: {str(e)}", api_path)
-
-def handle_cultural_insights(parameters, context):
-    """Get cultural insights from the cultural intelligence knowledge base."""
-    try:
-        # Extract parameters
-        product_id = parameters.get('product_id', '')
-        user_id = parameters.get('user_id', 'anonymous')
-        target_markets = parameters.get('target_markets', [])
-        campaign_type = parameters.get('campaign_type', 'general')
-        product_category = parameters.get('product_category', '')
+        # Get existing product record from DynamoDB
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'products')
+        product_record = get_product_by_id(table_name, product_id, user_id)
         
-        if not product_id:
-            return create_error_response("product_id parameter is required")
-        if not target_markets:
-            return create_error_response("target_markets parameter is required")
+        if not product_record:
+            return create_error_response(f"Product not found: {product_id}")
         
-        # Construct query for cultural knowledge base
-        query = f"Cultural adaptation guidelines for {campaign_type} campaign in {', '.join(target_markets)} markets for {product_category} products"
-        
-        # Query the cultural intelligence knowledge base
-        kb_id = get_knowledge_base_id()
-        cultural_insights = query_knowledge_base(kb_id, query)
-        
-        # Create cultural insights data
-        insights_data = {
-            'target_markets': target_markets,
-            'campaign_type': campaign_type,
-            'product_category': product_category,
-            'cultural_insights': cultural_insights,
-            'query_used': query,
-            'created_at': datetime.utcnow().isoformat(),
-            'request_id': context.aws_request_id
-        }
-        
-        # Save to products table
-        table_name = "products"  # Use the products table
-        save_cultural_insights_to_products(table_name, product_id, user_id, insights_data)
-        
-        # Return structured response
-        return create_success_response({
-            'product_id': product_id,
-            'user_id': user_id,
-            'target_markets': target_markets,
-            'cultural_guidelines': parse_cultural_guidelines(cultural_insights),
-            'adaptation_recommendations': generate_adaptation_recommendations(cultural_insights, target_markets),
-            'cultural_considerations': extract_cultural_considerations(cultural_insights),
-            'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': insights_data['created_at']
-        })
-        
-    except Exception as e:
-        print(f"Error in handle_cultural_insights: {str(e)}")
-        return create_error_response(f"Cultural insights query failed: {str(e)}")
-
-def handle_market_intelligence(parameters, context):
-    """Get market-specific intelligence from the market intelligence knowledge base."""
-    try:
-        # Extract parameters
-        product_id = parameters.get('product_id', '')
-        user_id = parameters.get('user_id', 'anonymous')
-        target_market = parameters.get('target_market', '')
-        intelligence_type = parameters.get('intelligence_type', 'general')
-        focus_areas = parameters.get('focus_areas', [])
-        
-        if not product_id:
-            return create_error_response("product_id parameter is required")
-        if not target_market:
-            return create_error_response("target_market parameter is required")
-        
-        # Construct query for market knowledge base
-        focus_query = f" focusing on {', '.join(focus_areas)}" if focus_areas else ""
-        query = f"{intelligence_type} market intelligence for {target_market}{focus_query}"
-        
-        # Query the cultural intelligence knowledge base (same as market intelligence)
-        kb_id = get_knowledge_base_id()
-        market_intelligence = query_knowledge_base(kb_id, query)
-        
-        # Create market intelligence data
-        intelligence_data = {
-            'target_market': target_market,
-            'intelligence_type': intelligence_type,
-            'focus_areas': focus_areas,
-            'market_intelligence': market_intelligence,
-            'query_used': query,
-            'created_at': datetime.utcnow().isoformat(),
-            'request_id': context.aws_request_id
-        }
-        
-        # Save to products table
-        table_name = "products"
-        save_market_intelligence_to_products(table_name, product_id, user_id, intelligence_data)
-        
-        # Return structured response
-        return create_success_response({
-            'product_id': product_id,
-            'user_id': user_id,
-            'target_market': target_market,
-            'market_insights': parse_market_insights(market_intelligence),
-            'demographic_data': extract_demographic_data(market_intelligence),
-            'cultural_preferences': extract_cultural_preferences(market_intelligence),
-            'platform_preferences': extract_platform_preferences(market_intelligence),
-            'seasonal_considerations': extract_seasonal_data(market_intelligence),
-            'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': intelligence_data['created_at']
-        })
-        
-    except Exception as e:
-        print(f"Error in handle_market_intelligence: {str(e)}")
-        return create_error_response(f"Market intelligence query failed: {str(e)}")
-
-def handle_content_adaptation(parameters, context):
-    """Adapt campaign content based on cultural and market intelligence."""
-    try:
-        # Extract parameters
-        product_id = parameters.get('product_id', '')
-        user_id = parameters.get('user_id', 'anonymous')
-        content = parameters.get('content', {})
-        target_markets = parameters.get('target_markets', [])
-        content_type = parameters.get('content_type', 'general')
-        
-        if not product_id:
-            return create_error_response("product_id parameter is required")
-        if not content or not target_markets:
-            return create_error_response("content and target_markets parameters are required")
-        
-        adaptations = {}
-        
-        for market in target_markets:
-            # Query knowledge base for comprehensive adaptation
-            cultural_query = f"Cultural adaptation guidelines for {content_type} content in {market}"
-            market_query = f"Market-specific preferences for {content_type} content in {market}"
-            
-            kb_id = get_knowledge_base_id()
-            
-            cultural_guidelines = query_knowledge_base(kb_id, cultural_query)
-            market_preferences = query_knowledge_base(kb_id, market_query)
-            
-            # Generate adaptation recommendations
-            adaptations[market] = {
-                'cultural_adaptations': generate_cultural_adaptations(content, cultural_guidelines),
-                'market_optimizations': generate_market_optimizations(content, market_preferences),
-                'localization_requirements': extract_localization_requirements(cultural_guidelines, market_preferences),
-                'risk_considerations': identify_cultural_risks(cultural_guidelines),
-                'platform_adjustments': suggest_platform_adjustments(market_preferences)
-            }
-        
-        # Create adaptation data
-        adaptation_data = {
-            'original_content': content,
-            'target_markets': target_markets,
-            'content_type': content_type,
-            'adaptations': adaptations,
-            'created_at': datetime.utcnow().isoformat(),
-            'request_id': context.aws_request_id
-        }
-        
-        # Save to products table
-        table_name = "products"
-        save_content_adaptation_to_products(table_name, product_id, user_id, adaptation_data)
-        
-        # Return structured response
-        return create_success_response({
-            'product_id': product_id,
-            'user_id': user_id,
-            'original_content': content,
-            'target_markets': target_markets,
-            'market_adaptations': adaptations,
-            'global_recommendations': generate_global_recommendations(adaptations),
-            'implementation_priority': rank_adaptation_priority(adaptations),
-            'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': adaptation_data['created_at']
-        })
-        
-    except Exception as e:
-        print(f"Error in handle_content_adaptation: {str(e)}")
-        return create_error_response(f"Content adaptation failed: {str(e)}")
-
-def query_knowledge_base(knowledge_base_id, query):
-    """Query a Bedrock knowledge base."""
-    try:
-        response = bedrock_agent_client.retrieve(
-            knowledgeBaseId=knowledge_base_id,
-            retrievalQuery={
-                'text': query
-            },
-            retrievalConfiguration={
-                'vectorSearchConfiguration': {
-                    'numberOfResults': 10
-                }
-            }
+        # Perform cultural intelligence analysis
+        cultural_insights = analyze_cultural_context(
+            product_name=product_record.get('product_name', 'Unknown'),
+            product_category=product_record.get('product_category', ''),
+            target_markets=target_markets
         )
         
-        # Extract and combine relevant results
-        results = []
-        for result in response.get('retrievalResults', []):
-            results.append({
-                'content': result.get('content', {}).get('text', ''),
-                'score': result.get('score', 0),
-                'metadata': result.get('metadata', {})
-            })
+        # Update the existing product record
+        updated_record = update_product_record(
+            table_name=table_name,
+            product_id=product_id,
+            user_id=user_id,
+            cultural_insights=cultural_insights,
+            request_id=context.aws_request_id
+        )
         
-        return results
-        
-    except Exception as e:
-        print(f"Error querying knowledge base {knowledge_base_id}: {str(e)}")
-        return []
-
-# Helper functions for parsing and processing knowledge base results
-
-def parse_cultural_guidelines(cultural_insights):
-    """Parse cultural guidelines from knowledge base results."""
-    guidelines = []
-    for insight in cultural_insights:
-        content = insight.get('content', '')
-        if any(keyword in content.lower() for keyword in ['guideline', 'recommendation', 'consider', 'avoid']):
-            guidelines.append({
-                'guideline': content[:200] + '...' if len(content) > 200 else content,
-                'confidence': insight.get('score', 0),
-                'source': insight.get('metadata', {}).get('source', 'knowledge_base')
-            })
-    return guidelines[:5]  # Top 5 guidelines
-
-def generate_adaptation_recommendations(cultural_insights, target_markets):
-    """Generate adaptation recommendations based on cultural insights."""
-    recommendations = []
-    
-    for market in target_markets:
-        market_insights = [i for i in cultural_insights if market.lower() in i.get('content', '').lower()]
-        if market_insights:
-            top_insight = market_insights[0]
-            recommendations.append({
-                'market': market,
-                'recommendation': f"Adapt content considering {market} cultural values",
-                'details': top_insight.get('content', '')[:300] + '...',
-                'priority': 'high' if top_insight.get('score', 0) > 0.8 else 'medium'
-            })
-    
-    return recommendations
-
-def extract_cultural_considerations(cultural_insights):
-    """Extract key cultural considerations."""
-    considerations = []
-    keywords = ['religion', 'tradition', 'holiday', 'color', 'symbol', 'gesture', 'taboo']
-    
-    for insight in cultural_insights:
-        content = insight.get('content', '').lower()
-        for keyword in keywords:
-            if keyword in content:
-                considerations.append({
-                    'category': keyword,
-                    'consideration': insight.get('content', '')[:150] + '...',
-                    'importance': 'high' if insight.get('score', 0) > 0.8 else 'medium'
-                })
-                break
-    
-    return considerations[:8]  # Top 8 considerations
-
-def parse_market_insights(market_intelligence):
-    """Parse market insights from knowledge base results."""
-    insights = []
-    for intel in market_intelligence:
-        content = intel.get('content', '')
-        insights.append({
-            'insight': content[:250] + '...' if len(content) > 250 else content,
-            'relevance': intel.get('score', 0),
-            'category': categorize_insight(content)
-        })
-    return insights[:6]  # Top 6 insights
-
-def extract_demographic_data(market_intelligence):
-    """Extract demographic information."""
-    demographics = {}
-    for intel in market_intelligence:
-        content = intel.get('content', '').lower()
-        if any(keyword in content for keyword in ['age', 'demographic', 'population', 'income']):
-            demographics['summary'] = intel.get('content', '')[:200] + '...'
-            break
-    return demographics
-
-def extract_cultural_preferences(market_intelligence):
-    """Extract cultural preferences."""
-    preferences = []
-    for intel in market_intelligence:
-        content = intel.get('content', '').lower()
-        if any(keyword in content for keyword in ['prefer', 'like', 'favor', 'value']):
-            preferences.append({
-                'preference': intel.get('content', '')[:150] + '...',
-                'strength': 'high' if intel.get('score', 0) > 0.8 else 'medium'
-            })
-    return preferences[:4]
-
-def extract_platform_preferences(market_intelligence):
-    """Extract social media platform preferences."""
-    platforms = {}
-    platform_names = ['facebook', 'instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'whatsapp']
-    
-    for intel in market_intelligence:
-        content = intel.get('content', '').lower()
-        for platform in platform_names:
-            if platform in content:
-                platforms[platform] = {
-                    'usage': 'high' if intel.get('score', 0) > 0.7 else 'medium',
-                    'notes': intel.get('content', '')[:100] + '...'
-                }
-    
-    return platforms
-
-def extract_seasonal_data(market_intelligence):
-    """Extract seasonal and holiday information."""
-    seasonal = []
-    for intel in market_intelligence:
-        content = intel.get('content', '').lower()
-        if any(keyword in content for keyword in ['holiday', 'season', 'festival', 'celebration']):
-            seasonal.append({
-                'event': intel.get('content', '')[:120] + '...',
-                'relevance': intel.get('score', 0)
-            })
-    return seasonal[:3]
-
-def categorize_insight(content):
-    """Categorize market insight content."""
-    content_lower = content.lower()
-    if any(keyword in content_lower for keyword in ['social', 'media', 'platform']):
-        return 'social_media'
-    elif any(keyword in content_lower for keyword in ['culture', 'tradition', 'value']):
-        return 'cultural'
-    elif any(keyword in content_lower for keyword in ['demographic', 'age', 'population']):
-        return 'demographic'
-    elif any(keyword in content_lower for keyword in ['economic', 'income', 'spending']):
-        return 'economic'
-    else:
-        return 'general'
-
-def generate_cultural_adaptations(content, cultural_guidelines):
-    """Generate cultural adaptations for content."""
-    adaptations = []
-    
-    # Analyze content elements that might need cultural adaptation
-    content_text = str(content)
-    
-    for guideline in cultural_guidelines:
-        guideline_content = guideline.get('content', '')
-        if any(keyword in guideline_content.lower() for keyword in ['color', 'image', 'text', 'message']):
-            adaptations.append({
-                'element': 'visual_content',
-                'adaptation': guideline_content[:150] + '...',
-                'priority': 'high' if guideline.get('score', 0) > 0.8 else 'medium'
-            })
-    
-    return adaptations[:3]
-
-def generate_market_optimizations(content, market_preferences):
-    """Generate market-specific optimizations."""
-    optimizations = []
-    
-    for preference in market_preferences:
-        pref_content = preference.get('content', '')
-        optimizations.append({
-            'optimization_type': 'platform_specific',
-            'description': pref_content[:150] + '...',
-            'impact': 'high' if preference.get('score', 0) > 0.8 else 'medium'
-        })
-    
-    return optimizations[:3]
-
-def extract_localization_requirements(cultural_guidelines, market_preferences):
-    """Extract localization requirements."""
-    requirements = []
-    
-    all_guidelines = cultural_guidelines + market_preferences
-    for guideline in all_guidelines:
-        content = guideline.get('content', '').lower()
-        if any(keyword in content for keyword in ['translate', 'language', 'local', 'adapt']):
-            requirements.append({
-                'requirement': guideline.get('content', '')[:120] + '...',
-                'category': 'language' if 'language' in content else 'cultural'
-            })
-    
-    return requirements[:4]
-
-def identify_cultural_risks(cultural_guidelines):
-    """Identify potential cultural risks."""
-    risks = []
-    
-    for guideline in cultural_guidelines:
-        content = guideline.get('content', '').lower()
-        if any(keyword in content for keyword in ['avoid', 'risk', 'sensitive', 'inappropriate', 'taboo']):
-            risks.append({
-                'risk': guideline.get('content', '')[:150] + '...',
-                'severity': 'high' if guideline.get('score', 0) > 0.8 else 'medium'
-            })
-    
-    return risks[:3]
-
-def suggest_platform_adjustments(market_preferences):
-    """Suggest platform-specific adjustments."""
-    adjustments = []
-    
-    for preference in market_preferences:
-        content = preference.get('content', '').lower()
-        if any(keyword in content for keyword in ['platform', 'social', 'media', 'post']):
-            adjustments.append({
-                'platform_adjustment': preference.get('content', '')[:120] + '...',
-                'importance': 'high' if preference.get('score', 0) > 0.8 else 'medium'
-            })
-    
-    return adjustments[:3]
-
-def generate_global_recommendations(adaptations):
-    """Generate global recommendations across all markets."""
-    recommendations = []
-    
-    # Analyze common themes across all market adaptations
-    all_adaptations = []
-    for market, adaptation in adaptations.items():
-        all_adaptations.extend(adaptation.get('cultural_adaptations', []))
-    
-    # Group common recommendations
-    if all_adaptations:
-        recommendations.append({
-            'recommendation': 'Implement consistent cultural sensitivity review process',
-            'rationale': 'Multiple markets require cultural adaptations',
-            'priority': 'high'
-        })
-    
-    return recommendations
-
-def rank_adaptation_priority(adaptations):
-    """Rank adaptation priorities across markets."""
-    priorities = []
-    
-    for market, adaptation in adaptations.items():
-        high_priority_count = sum(1 for item in adaptation.get('cultural_adaptations', []) if item.get('priority') == 'high')
-        priorities.append({
-            'market': market,
-            'priority_score': high_priority_count,
-            'urgency': 'high' if high_priority_count > 2 else 'medium'
-        })
-    
-    return sorted(priorities, key=lambda x: x['priority_score'], reverse=True)
-
-# DynamoDB and utility functions
-
-def convert_floats_to_decimals(obj):
-    """Convert all float values in a nested object to Decimal for DynamoDB compatibility."""
-    if isinstance(obj, list):
-        return [convert_floats_to_decimals(item) for item in obj]
-    elif isinstance(obj, dict):
-        return {key: convert_floats_to_decimals(value) for key, value in obj.items()}
-    elif isinstance(obj, float):
-        return Decimal(str(obj))
-    else:
-        return obj
-
-def save_cultural_insights_to_products(table_name, product_id, user_id, insights_data):
-    """Save or update cultural insights in the products table."""
-    try:
-        table = dynamodb.Table(table_name)
-        
-        # Convert floats to Decimals for DynamoDB compatibility
-        insights_data = convert_floats_to_decimals(insights_data)
-        
-        # Check if product record exists
-        try:
-            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
-            existing_item = response.get('Item')
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ValidationException':
-                # Table might not exist or wrong key structure
-                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
-            raise
-        
-        if existing_item:
-            # Update existing record with cultural insights
-            update_expression = "SET cultural_insights = :insights, updated_at = :updated_at"
-            expression_values = {
-                ':insights': insights_data,
-                ':updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.update_item(
-                Key={'product_id': product_id, 'user_id': user_id},
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_values
-            )
-            print(f"Updated cultural insights for product {product_id}")
-        else:
-            # Create new product record with cultural insights
-            new_record = {
-                'product_id': product_id,
-                'user_id': user_id,
-                'cultural_insights': insights_data,
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.put_item(Item=new_record)
-            print(f"Created new product record {product_id} with cultural insights")
-            
-    except Exception as e:
-        print(f"Error saving cultural insights to products table: {str(e)}")
-        raise
-
-def save_market_intelligence_to_products(table_name, product_id, user_id, intelligence_data):
-    """Save or update market intelligence in the products table."""
-    try:
-        table = dynamodb.Table(table_name)
-        
-        # Convert floats to Decimals for DynamoDB compatibility
-        intelligence_data = convert_floats_to_decimals(intelligence_data)
-        
-        # Check if product record exists
-        try:
-            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
-            existing_item = response.get('Item')
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ValidationException':
-                # Table might not exist or wrong key structure
-                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
-            raise
-        
-        if existing_item:
-            # Update existing record with market intelligence
-            update_expression = "SET market_intelligence = :intelligence, updated_at = :updated_at"
-            expression_values = {
-                ':intelligence': intelligence_data,
-                ':updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.update_item(
-                Key={'product_id': product_id, 'user_id': user_id},
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_values
-            )
-            print(f"Updated market intelligence for product {product_id}")
-        else:
-            # Create new product record with market intelligence
-            new_record = {
-                'product_id': product_id,
-                'user_id': user_id,
-                'market_intelligence': intelligence_data,
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.put_item(Item=new_record)
-            print(f"Created new product record {product_id} with market intelligence")
-            
-    except Exception as e:
-        print(f"Error saving market intelligence to products table: {str(e)}")
-        raise
-
-def save_content_adaptation_to_products(table_name, product_id, user_id, adaptation_data):
-    """Save or update content adaptation in the products table."""
-    try:
-        table = dynamodb.Table(table_name)
-        
-        # Convert floats to Decimals for DynamoDB compatibility
-        adaptation_data = convert_floats_to_decimals(adaptation_data)
-        
-        # Check if product record exists
-        try:
-            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
-            existing_item = response.get('Item')
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ValidationException':
-                # Table might not exist or wrong key structure
-                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
-            raise
-        
-        if existing_item:
-            # Update existing record with content adaptation
-            update_expression = "SET content_adaptation = :adaptation, updated_at = :updated_at"
-            expression_values = {
-                ':adaptation': adaptation_data,
-                ':updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.update_item(
-                Key={'product_id': product_id, 'user_id': user_id},
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_values
-            )
-            print(f"Updated content adaptation for product {product_id}")
-        else:
-            # Create new product record with content adaptation
-            new_record = {
-                'product_id': product_id,
-                'user_id': user_id,
-                'content_adaptation': adaptation_data,
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            table.put_item(Item=new_record)
-            print(f"Created new product record {product_id} with content adaptation")
-            
-    except Exception as e:
-        print(f"Error saving content adaptation to products table: {str(e)}")
-        raise
-
-def get_knowledge_base_id():
-    """Get Knowledge Base ID from environment variables."""
-    import os
-    # Try multiple environment variable names for backward compatibility
-    kb_id = (os.environ.get('CULTURAL_INTELLIGENCE_KB_ID') or 
-             os.environ.get('CULTURAL_KB_ID') or 
-             os.environ.get('MARKET_KB_ID'))
-    
-    if not kb_id:
-        raise Exception("Knowledge Base ID environment variable not set. Expected CULTURAL_INTELLIGENCE_KB_ID, CULTURAL_KB_ID, or MARKET_KB_ID")
-    
-    print(f"Using Knowledge Base ID: {kb_id}")
-    return kb_id
-
-def get_dynamodb_table_name():
-    """Get DynamoDB table name from environment variables."""
-    import os
-    table_name = os.environ.get('DYNAMODB_TABLE_NAME')
-    if not table_name:
-        raise Exception("DYNAMODB_TABLE_NAME environment variable not set")
-    return table_name
-
-def create_success_response(data):
-    """Create a successful response for Bedrock agent."""
-    return {
-        'statusCode': 200,
-        'body': json.dumps({
+        # Return structured response with product_id and user_id
+        response_data = {
             'success': True,
-            'data': data
-        })
+            'product_id': product_id,
+            'user_id': user_id,
+            'cultural_status': 'culturally_enriched',
+            'markets_analyzed': len(cultural_insights.get('market_insights', {})),
+            'cultural_considerations_count': sum(
+                len(v.get('considerations', []))
+                for v in cultural_insights.get('market_insights', {}).values()
+            ),
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps(response_data)
+        }
+        
+    except Exception as e:
+        print(f"Error in handle_cultural_intelligence: {str(e)}")
+        return create_error_response(f"Cultural intelligence analysis failed: {str(e)}")
+
+
+def get_product_by_id(table_name, product_id, user_id):
+    """
+    Retrieve product record from DynamoDB by product_id and user_id.
+    
+    Args:
+        table_name: DynamoDB table name
+        product_id: Product ID
+        user_id: User ID
+        
+    Returns:
+        Product record or None if not found
+    """
+    try:
+        table = dynamodb.Table(table_name)
+        response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+        return response.get('Item')
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        print(f"DynamoDB error: {error_code} - {error_message}")
+        raise
+
+
+def analyze_cultural_context(product_name, product_category, target_markets):
+    """
+    Analyze cultural context and provide insights for different markets.
+    
+    Args:
+        product_name: Product name
+        product_category: Product category
+        target_markets: Dictionary of target markets
+        
+    Returns:
+        Dictionary with cultural insights per market
+    """
+    markets = target_markets.get('markets', [])
+    if isinstance(markets, str):
+        try:
+            markets = json.loads(markets)
+        except:
+            markets = ['Global']
+    
+    if not markets:
+        markets = ['Global']
+    
+    market_insights = {}
+    
+    for market in markets:
+        market_key = str(market).lower().replace(' ', '_')
+        market_insights[market_key] = generate_market_insights(
+            market=str(market),
+            product_name=product_name,
+            product_category=product_category
+        )
+    
+    return {
+        'market_insights': market_insights,
+        'communication_guidelines': generate_communication_guidelines(product_category),
+        'cultural_sensitivity_notes': generate_sensitivity_notes(),
+        'analyzed_at': datetime.utcnow().isoformat()
     }
 
+
+def generate_market_insights(market, product_name, product_category):
+    """Generate cultural insights for a specific market."""
+    # Mock insights - in production, integrate with cultural analytics API
+    
+    market_data = {
+        'Global': {
+            'language': 'English',
+            'timezone': 'UTC',
+            'preferred_platforms': ['Facebook', 'Instagram', 'YouTube'],
+            'communication_style': 'professional',
+            'considerations': [
+                'Universal appeal in marketing',
+                'Multilingual support recommended',
+                'Time zone optimization for content delivery'
+            ],
+            'best_posting_times': ['9 AM - 11 AM', '6 PM - 8 PM'],
+            'cultural_nuances': 'General Western market assumptions'
+        },
+        'North America': {
+            'language': 'English',
+            'timezone': 'America/New_York, America/Los_Angeles',
+            'preferred_platforms': ['Instagram', 'TikTok', 'YouTube'],
+            'communication_style': 'casual, humor-focused',
+            'considerations': [
+                'Direct calls to action work well',
+                'User-generated content highly valued',
+                'Emphasis on individual success stories'
+            ],
+            'best_posting_times': ['12 PM - 1 PM', '7 PM - 9 PM'],
+            'cultural_nuances': 'Fast-paced, trend-driven market'
+        },
+        'Europe': {
+            'language': 'Multiple (English, German, French, etc.)',
+            'timezone': 'Europe/London, Europe/Berlin, Europe/Paris',
+            'preferred_platforms': ['Instagram', 'Facebook', 'TikTok'],
+            'communication_style': 'sophisticated, value-driven',
+            'considerations': [
+                'Privacy and data protection important',
+                'GDPR compliance essential',
+                'Quality over quantity in content',
+                'Sustainability messaging resonates'
+            ],
+            'best_posting_times': ['10 AM - 12 PM', '6 PM - 8 PM'],
+            'cultural_nuances': 'Quality-conscious, data privacy aware'
+        },
+        'Asia': {
+            'language': 'Multiple (Chinese, Japanese, Hindi, etc.)',
+            'timezone': 'Asia/Shanghai, Asia/Tokyo, Asia/Hong_Kong',
+            'preferred_platforms': ['WeChat', 'Douyin', 'Instagram'],
+            'communication_style': 'aspirational, community-focused',
+            'considerations': [
+                'Mobile-first consumption',
+                'Live streaming highly popular',
+                'Influencer partnerships crucial',
+                'Localisation essential, not just translation',
+                'Lucky numbers and color symbolism important'
+            ],
+            'best_posting_times': ['7 AM - 9 AM', '9 PM - 11 PM'],
+            'cultural_nuances': 'Fast-growing, mobile-dominant market'
+        },
+        'Latin America': {
+            'language': 'Spanish, Portuguese',
+            'timezone': 'America/Mexico_City, America/Buenos_Aires',
+            'preferred_platforms': ['Instagram', 'TikTok', 'Facebook'],
+            'communication_style': 'warm, family-oriented, festive',
+            'considerations': [
+                'Family values important in messaging',
+                'Celebration and festivity resonate',
+                'Spanish language nuances vary by country',
+                'Music and visual storytelling key'
+            ],
+            'best_posting_times': ['11 AM - 1 PM', '8 PM - 10 PM'],
+            'cultural_nuances': 'Relationship-driven, festive market'
+        }
+    }
+    
+    # Get market-specific data or use Global as default
+    insights = market_data.get(market, market_data['Global']).copy()
+    insights['market'] = market
+    insights['product_category_relevance'] = f"{product_name} in {market} market"
+    
+    return insights
+
+
+def generate_communication_guidelines(product_category):
+    """Generate communication guidelines for the product category."""
+    category_guidelines = {
+        'electronics': {
+            'tone': 'Tech-savvy, innovative',
+            'focus': ['Performance', 'Innovation', 'Durability'],
+            'avoid': ['Overstated claims', 'Technical jargon for general audience'],
+            'storytelling_angle': 'Innovation changing lives'
+        },
+        'fashion': {
+            'tone': 'Aspirational, trendy',
+            'focus': ['Style', 'Quality', 'Self-expression'],
+            'avoid': ['Unsustainable messaging', 'Unrealistic body standards'],
+            'storytelling_angle': 'Expressing individuality'
+        },
+        'food': {
+            'tone': 'Warm, sensory-rich',
+            'focus': ['Quality', 'Taste', 'Experience'],
+            'avoid': ['Health claims without evidence', 'Cultural appropriation'],
+            'storytelling_angle': 'Creating shared experiences'
+        },
+        'health': {
+            'tone': 'Trustworthy, evidence-based',
+            'focus': ['Wellness', 'Science', 'Personal care'],
+            'avoid': ['Medical claims without disclaimer', 'Overpromising'],
+            'storytelling_angle': 'Empowering better choices'
+        }
+    }
+    
+    category = product_category.lower() if product_category else 'electronics'
+    return category_guidelines.get(category, category_guidelines['electronics'])
+
+
+def generate_sensitivity_notes():
+    """Generate general cultural sensitivity notes."""
+    return [
+        'Always research local holidays and avoid insensitive timing',
+        'Use diverse representation in visual content',
+        'Respect local customs around food, religion, and traditions',
+        'Ensure color symbolism is culturally appropriate',
+        'Test messaging with local cultural experts',
+        'Be aware of gender roles and family structures in target markets',
+        'Consider local environmental and social values',
+        'Avoid stereotypes and clichés about cultures'
+    ]
+
+
+def update_product_record(table_name, product_id, user_id, cultural_insights, request_id):
+    """
+    Update existing product record in DynamoDB with cultural intelligence data.
+    
+    Args:
+        table_name: DynamoDB table name
+        product_id: Product ID
+        user_id: User ID
+        cultural_insights: Results from cultural analysis
+        request_id: Lambda request ID
+        
+    Returns:
+        Updated product record
+    """
+    try:
+        from decimal import Decimal
+        
+        # Convert float values to Decimal for DynamoDB compatibility
+        def convert_floats(obj):
+            if isinstance(obj, float):
+                return Decimal(str(obj))
+            elif isinstance(obj, dict):
+                return {k: convert_floats(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_floats(v) for v in obj]
+            return obj
+        
+        timestamp = datetime.utcnow().isoformat()
+        
+        table = dynamodb.Table(table_name)
+        
+        # Update the record with cultural insights
+        response = table.update_item(
+            Key={
+                'product_id': product_id,
+                'user_id': user_id
+            },
+            UpdateExpression="""
+                SET market_insights = :market_insights,
+                    communication_guidelines = :guidelines,
+                    cultural_sensitivity_notes = :sensitivity,
+                    cultural_status = :status,
+                    updated_at = :timestamp,
+                    cultural_request_id = :request_id
+            """,
+            ExpressionAttributeValues={
+                ':market_insights': convert_floats(cultural_insights['market_insights']),
+                ':guidelines': convert_floats(cultural_insights['communication_guidelines']),
+                ':sensitivity': cultural_insights['cultural_sensitivity_notes'],
+                ':status': 'culturally_enriched',
+                ':timestamp': timestamp,
+                ':request_id': request_id
+            },
+            ReturnValues='ALL_NEW'
+        )
+        
+        print(f"Successfully updated product record {product_id} with cultural insights")
+        return response.get('Attributes', {})
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        print(f"DynamoDB error: {error_code} - {error_message}")
+        raise Exception(f"Failed to update product in DynamoDB: {error_message}")
+
+
 def create_error_response(error_message):
-    """Create an error response for Bedrock agent."""
+    """Create an error response."""
     return {
         'statusCode': 400,
         'body': json.dumps({
@@ -761,8 +398,75 @@ def create_error_response(error_message):
         })
     }
 
-def create_bedrock_error_response(error_message, api_path='unknown'):
-    """Create a Bedrock-formatted error response."""
+
+def handle_bedrock_agent_invocation(event, context):
+    """Handle Bedrock agent invocation format."""
+    try:
+        request_body = event.get('requestBody', {})
+        content = request_body.get('content', {})
+        
+        function_name = event.get('function', '')
+        api_path = event.get('apiPath', '')
+        
+        print(f"Bedrock invocation - Function: {function_name}, API Path: {api_path}")
+        
+        # Parse properties array
+        json_body = {}
+        if 'application/json' in content and isinstance(content['application/json'], dict):
+            app_json = content['application/json']
+            if 'properties' in app_json:
+                for prop in app_json['properties']:
+                    prop_name = prop.get('name')
+                    prop_value = prop.get('value', '')
+                    
+                    if prop_name == 'product_id':
+                        json_body['product_id'] = prop_value
+                    
+                    elif prop_name == 'target_markets':
+                        try:
+                            json_body['target_markets'] = json.loads(prop_value)
+                        except json.JSONDecodeError:
+                            return create_bedrock_error_response(f"Invalid target_markets JSON", api_path)
+        
+        if not json_body.get('product_id'):
+            return create_bedrock_error_response("product_id is required", api_path)
+        
+        print(f"Constructed JSON body: {json.dumps(json_body)}")
+        
+        if function_name == 'analyze_cultural_insights' or api_path == '/analyze-cultural-insights':
+            result = handle_cultural_intelligence(json_body, context)
+            
+            if result.get('statusCode') == 200:
+                body_data = json.loads(result['body'])
+                return {
+                    'messageVersion': '1.0',
+                    'response': {
+                        'actionGroup': 'cultural-intelligence',
+                        'apiPath': api_path,
+                        'httpMethod': 'POST',
+                        'httpStatusCode': 200,
+                        'responseBody': {
+                            'application/json': {
+                                'body': json.dumps(body_data)
+                            }
+                        }
+                    }
+                }
+            else:
+                error_data = json.loads(result['body'])
+                return create_bedrock_error_response(error_data.get('error', 'Unknown error'), api_path)
+        else:
+            return create_bedrock_error_response(f"Unknown function: {function_name}", api_path)
+            
+    except Exception as e:
+        print(f"Error in handle_bedrock_agent_invocation: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return create_bedrock_error_response(f"Internal error: {str(e)}", "/analyze-cultural-insights")
+
+
+def create_bedrock_error_response(error_message, api_path='/analyze-cultural-insights'):
+    """Create a Bedrock agent compatible error response."""
     return {
         'messageVersion': '1.0',
         'response': {

@@ -1,0 +1,37 @@
+{
+  "product_info": {
+    "name": "Premium Wireless Headphones",
+    "description": "High-quality wireless headphones with active noise cancellation, 30-hour battery life, and premium sound quality",
+    "category": "electronics",
+    "price": "$299.99",
+    "key_features": [
+      "Active Noise Cancellation",
+      "30-hour battery life",
+      "Bluetooth 5.0",
+      "Premium build quality",
+      "Touch controls"
+    ]
+  },
+  "s3_info": {
+    "bucket": "degenerals-mi-dev-images",
+    "key": "uploads/anonymous/20251018_125526_28656d0e-aeb2-45e2-8f87-d951927e883b.jpg"
+  },
+  "target_markets": {
+    "markets": ["North America", "Europe", "Asia"]
+  },
+  "campaign_objectives": {
+    "target_audience": "Tech enthusiasts, professionals, audiophiles",
+    "target_age_range": "25-55",
+    "platform_preferences": ["Instagram", "TikTok", "YouTube", "LinkedIn"],
+    "income_level": "middle to upper",
+    "geographic_focus": "Global",
+    "campaign_duration": "30 days",
+    "budget": "$50,000",
+    "primary_goal": "Increase brand awareness and drive sales",
+    "secondary_goals": [
+      "Build social media engagement",
+      "Generate user-generated content",
+      "Establish thought leadership"
+    ]
+  }
+}
