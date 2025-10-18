@@ -92,6 +92,101 @@ Return ONLY JSON that conforms to this schema. Use whatever data you have availa
 
 ```json
 {
+  "product": {
+    "description": "<product name and description, 20-500 chars>",
+    "image": {
+      "public_url": "https://product-images-bucket-v2.s3.amazonaws.com/<s3_key>",
+      "s3_key": "<s3_key>",
+      "labels": ["<label1>", "<label2>", "<label3>"]
+    }
+  },
+  "content_ideas": [
+    {
+      "platform": "<Instagram|TikTok|YouTube|LinkedIn|Twitter|Facebook>",
+      "topic": "<content topic, 10-200 chars>",
+      "engagement_score": "<0-100>",
+      "caption": "<engaging caption, 20-500 chars>",
+      "hashtags": ["#tag1", "#tag2", "#tag3"]
+    }
+  ],
+  "campaigns": [
+    {
+      "name": "<campaign name, 10-100 chars>",
+      "duration": "<campaign duration>",
+      "posts_per_week": "<1-10>",
+      "platforms": ["<platform 1>", "<platform 2>"],
+      "calendar": {
+        "Week 1": "<week 1 activities>",
+        "Week 2": "<week 2 activities>",
+        "Week 3": "<week 3 activities>",
+        "Week 4": "<week 4 activities>"
+      },
+      "adaptations": {
+        "<platform>": "<platform-specific strategy>",
+        "<platform>": "<platform-specific strategy>"
+      }
+    }
+  ],
+  "generated_assets": {
+    "image_prompts": [
+      "<detailed image generation prompt>",
+      "<detailed image generation prompt>"
+    ],
+    "video_scripts": [
+      {
+        "type": "<Short form video|Long form video|Tutorial|Review>",
+        "content": "<script content>"
+      }
+    ],
+    "email_templates": [
+      {
+        "subject": "<email subject>",
+        "body": "<email body content>"
+      }
+    ],
+    "blog_outlines": [
+      {
+        "title": "<blog post title>",
+        "points": ["<point 1>", "<point 2>", "<point 3>"]
+      }
+    ]
+  },
+  "related_youtube_videos": [
+    {
+      "title": "<video title>",
+      "channel": "<channel name>",
+      "url": "<youtube url>",
+      "views": "<number of views>"
+    }
+  ],
+  "platform_recommendations": {
+    "primary_platforms": ["<platform 1>", "<platform 2>"],
+    "rationale": "<why these platforms, 50-500 chars>"
+  },
+  "market_insights": {
+    "trending_content_types": ["<type 1>", "<type 2>"],
+    "cultural_considerations": ["<consideration 1>"],
+    "audience_preferences": ["<preference 1>", "<preference 2>"]
+  }
+}
+```
+
+CRITICAL REQUIREMENTS:
+
+- You MUST include EXACTLY all the fields shown above, with the same names and nesting
+- Include 2-5 content_ideas with different platforms
+- All hashtags must start with # and be 1-30 chars
+- Include realistic engagement scores based on platform and content type
+- Provide 1-3 complete campaign objects with detailed calendar and adaptations
+- Generate relevant image prompts, video scripts, email templates, and blog outlines
+- Include YouTube videos from the data provided or generate placeholder videos
+- Do not add any fields not shown in the schema above
+- Do not omit any required fields
+
+The JSON schema specification is as follows:
+
+```json
+{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": [
@@ -465,9 +560,14 @@ Return ONLY JSON that conforms to this schema. Use whatever data you have availa
 
 **For related_youtube_videos (if data-enrichment fails):**
 
-- Generate realistic-looking YouTube video IDs (11 random alphanumeric characters)
-- These are placeholders for manual research/curator to populate
-- Format: `[a-zA-Z0-9_-]{11}` (e.g., `dQw4w9WgXcQ`)
+- Generate realistic-looking YouTube video entries with:
+  - title: "<descriptive video title>"
+  - channel: "<creator channel name>"
+  - url: "https://www.youtube.com/watch?v=<video_id>" (use realistic 11-char IDs)
+  - views: <reasonable view count>
+- Format video IDs as: `[a-zA-Z0-9_-]{11}` (e.g., `dQw4w9WgXcQ`)
+- Include at least 2 video entries
+- CRITICAL: Always include all required fields (title, channel, url, views)
 
 ## EXAMPLES OF GRACEFUL INFERENCE:
 
@@ -506,5 +606,6 @@ Return ONLY JSON that conforms to this schema. Use whatever data you have availa
    - data-enrichment fails? Generate content ideas based on product category and audience interests
    - cultural-intelligence fails? Use your knowledge of target markets and best practices
 4. **ALWAYS INFER** - Use input data (product info, target_markets, budget, timeline, interests, etc.) to fill gaps
-5. **VALID OUTPUT REQUIRED** - Return complete, well-formed JSON matching the campaign schema below
+5. **VALID OUTPUT REQUIRED** - Return complete, well-formed JSON matching the campaign schema EXACTLY
 6. **NO EXPLANATIONS** - Return ONLY the JSON response, no markdown or text explanation
+7. **EXACT SCHEMA CONFORMANCE** - Your JSON must match the schema exactly with all required fields and proper nesting
