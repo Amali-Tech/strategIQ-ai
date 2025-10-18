@@ -85,162 +85,164 @@
                           "type": "integer",
                           "description": "Number of content pieces found and processed"
                         },
-                    "enrichment_data": {
-                      "type": "object",
-                      "description": "Structured enrichment data",
-                      "properties": {
-                        "search_query": {
-                          "type": "string",
-                          "description": "The original search query"
-                        },
-                        "total_results": {
-                          "type": "integer",
-                          "description": "Total results available from the search"
-                        },
-                        "videos": {
-                          "type": "array",
-                          "description": "YouTube video results",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "video_id": { "type": "string" },
-                              "title": { "type": "string" },
-                              "description": { "type": "string" },
-                              "channel_title": { "type": "string" },
-                              "published_at": { "type": "string" },
-                              "thumbnail_url": { "type": "string" },
-                              "relevance_score": { "type": "number" }
-                            }
-                          }
-                        },
-                        "channels": {
-                          "type": "array",
-                          "description": "YouTube channel results",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "channel_id": { "type": "string" },
-                              "channel_title": { "type": "string" },
-                              "description": { "type": "string" },
-                              "published_at": { "type": "string" },
-                              "thumbnail_url": { "type": "string" }
-                            }
-                          }
-                        },
-                        "trending_keywords": {
-                          "type": "array",
-                          "description": "Keywords trending in the search results",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "keyword": { "type": "string" },
-                              "frequency": { "type": "integer" }
-                            }
-                          }
-                        },
-                        "content_themes": {
-                          "type": "array",
-                          "description": "Common themes identified in content",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "theme": { "type": "string" },
-                              "count": { "type": "integer" }
-                            }
-                          }
-                        },
-                        "engagement_patterns": {
+                        "enrichment_data": {
                           "type": "object",
-                          "description": "Patterns in content engagement and performance",
+                          "description": "Structured enrichment data",
                           "properties": {
-                            "optimal_title_length": {
-                              "type": "object",
-                              "properties": {
-                                "average": { "type": "number" },
-                                "recommendation": { "type": "string" }
-                              }
+                            "search_query": {
+                              "type": "string",
+                              "description": "The original search query"
                             },
-                            "popular_posting_times": {
-                              "type": "object",
-                              "properties": {
-                                "pattern": { "type": "string" },
-                                "recommendation": { "type": "string" }
-                              }
+                            "total_results": {
+                              "type": "integer",
+                              "description": "Total results available from the search"
                             },
-                            "successful_content_formats": {
+                            "videos": {
                               "type": "array",
+                              "description": "YouTube video results",
                               "items": {
                                 "type": "object",
                                 "properties": {
-                                  "format": { "type": "string" },
+                                  "video_id": { "type": "string" },
+                                  "title": { "type": "string" },
+                                  "description": { "type": "string" },
+                                  "channel_title": { "type": "string" },
+                                  "published_at": { "type": "string" },
+                                  "thumbnail_url": { "type": "string" },
+                                  "relevance_score": { "type": "number" }
+                                }
+                              }
+                            },
+                            "channels": {
+                              "type": "array",
+                              "description": "YouTube channel results",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "channel_id": { "type": "string" },
+                                  "channel_title": { "type": "string" },
+                                  "description": { "type": "string" },
+                                  "published_at": { "type": "string" },
+                                  "thumbnail_url": { "type": "string" }
+                                }
+                              }
+                            },
+                            "trending_keywords": {
+                              "type": "array",
+                              "description": "Keywords trending in the search results",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "keyword": { "type": "string" },
+                                  "frequency": { "type": "integer" }
+                                }
+                              }
+                            },
+                            "content_themes": {
+                              "type": "array",
+                              "description": "Common themes identified in content",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "theme": { "type": "string" },
                                   "count": { "type": "integer" }
+                                }
+                              }
+                            },
+                            "engagement_patterns": {
+                              "type": "object",
+                              "description": "Patterns in content engagement and performance",
+                              "properties": {
+                                "optimal_title_length": {
+                                  "type": "object",
+                                  "properties": {
+                                    "average": { "type": "number" },
+                                    "recommendation": { "type": "string" }
+                                  }
+                                },
+                                "popular_posting_times": {
+                                  "type": "object",
+                                  "properties": {
+                                    "pattern": { "type": "string" },
+                                    "recommendation": { "type": "string" }
+                                  }
+                                },
+                                "successful_content_formats": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "format": { "type": "string" },
+                                      "count": { "type": "integer" }
+                                    }
+                                  }
                                 }
                               }
                             }
                           }
-                        }
-                      }
-                    },
-                    "insights": {
-                      "type": "object",
-                      "description": "Actionable insights generated from the data",
-                      "properties": {
-                        "content_opportunities": {
-                          "type": "array",
-                          "description": "Content creation opportunities",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "opportunity": { "type": "string" },
-                              "relevance": { "type": "integer" },
-                              "reasoning": { "type": "string" }
-                            }
-                          }
                         },
-                        "trending_topics": {
-                          "type": "array",
-                          "description": "Trending topics identified",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "topic": { "type": "string" },
-                              "prevalence": { "type": "integer" },
-                              "recommendation": { "type": "string" }
-                            }
-                          }
-                        },
-                        "audience_preferences": {
-                          "type": "array",
-                          "description": "Audience preferences and behaviors",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "preference": { "type": "string" },
-                              "detail": { "type": "string" },
-                              "impact": { "type": "string" }
-                            }
-                          }
-                        },
-                        "competitive_landscape": {
-                          "type": "array",
-                          "description": "Competitive analysis insights",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "insight": { "type": "string" },
-                              "recommendation": { "type": "string" },
-                              "channels": {
-                                "type": "array",
-                                "items": { "type": "string" }
+                        "insights": {
+                          "type": "object",
+                          "description": "Actionable insights generated from the data",
+                          "properties": {
+                            "content_opportunities": {
+                              "type": "array",
+                              "description": "Content creation opportunities",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "opportunity": { "type": "string" },
+                                  "relevance": { "type": "integer" },
+                                  "reasoning": { "type": "string" }
+                                }
+                              }
+                            },
+                            "trending_topics": {
+                              "type": "array",
+                              "description": "Trending topics identified",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "topic": { "type": "string" },
+                                  "prevalence": { "type": "integer" },
+                                  "recommendation": { "type": "string" }
+                                }
+                              }
+                            },
+                            "audience_preferences": {
+                              "type": "array",
+                              "description": "Audience preferences and behaviors",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "preference": { "type": "string" },
+                                  "detail": { "type": "string" },
+                                  "impact": { "type": "string" }
+                                }
+                              }
+                            },
+                            "competitive_landscape": {
+                              "type": "array",
+                              "description": "Competitive analysis insights",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "insight": { "type": "string" },
+                                  "recommendation": { "type": "string" },
+                                  "channels": {
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                  }
+                                }
                               }
                             }
                           }
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of the enrichment operation"
                         }
                       }
-                    },
-                    "timestamp": {
-                      "type": "string",
-                      "description": "Timestamp of the enrichment operation"
                     }
                   }
                 }

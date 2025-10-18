@@ -1,28 +1,41 @@
 {
-  "openapi": "3.0.1",
+  "openapi": "3.0.0",
   "info": {
-    "title": "Sentiment Analysis Lambda Function",
-    "description": "AWS Lambda function for comprehensive sentiment analysis, action item generation, and marketing insights using AWS Comprehend, Bedrock, and YouTube API",
+    "title": "Sentiment Analysis Lambda",
+    "description": "Comprehensive sentiment analysis and action item generation using AWS Comprehend, Bedrock, and YouTube API integration",
     "version": "1.0.0"
   },
-  "servers": [
-    {
-      "url": "https://lambda.{region}.amazonaws.com",
-      "description": "AWS Lambda service endpoint"
-    }
-  ],
   "paths": {
     "/analyze_sentiment": {
       "post": {
-        "summary": "Perform sentiment analysis on product/brand content",
-        "description": "Analyzes sentiment from YouTube videos, news articles, and social media content related to a product or brand using AWS Comprehend",
-        "operationId": "analyzeSentiment",
+        "operationId": "analyze_sentiment",
+        "summary": "Analyze sentiment from product/brand content",
+        "description": "Searches YouTube, news, and social media for content related to a product/brand and performs sentiment analysis using AWS Comprehend",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SentimentAnalysisRequest"
+                "type": "object",
+                "required": ["search_query"],
+                "properties": {
+                  "search_query": {
+                    "type": "string",
+                    "description": "Product, brand, or topic to analyze"
+                  },
+                  "product_name": {
+                    "type": "string",
+                    "description": "Optional specific product name"
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "description": "Optional product identifier (auto-generated if omitted)"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "Optional user identifier (defaults to 'anonymous')"
+                  }
+                }
               }
             }
           }
@@ -33,17 +46,141 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SentimentAnalysisResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "analysis_id": {
+                          "type": "string",
+                          "description": "Unique analysis identifier"
+                        },
+                        "product_id": {
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "search_query": {
+                          "type": "string"
+                        },
+                        "product_name": {
+                          "type": "string"
+                        },
+                        "sentiment_summary": {
+                          "type": "object",
+                          "properties": {
+                            "overall_sentiment": {
+                              "type": "string",
+                              "enum": [
+                                "positive",
+                                "negative",
+                                "neutral",
+                                "mixed"
+                              ]
+                            },
+                            "confidence": {
+                              "type": "number",
+                              "format": "float"
+                            },
+                            "total_analyzed": {
+                              "type": "integer"
+                            },
+                            "sentiment_percentages": {
+                              "type": "object",
+                              "properties": {
+                                "positive": {
+                                  "type": "number",
+                                  "format": "float"
+                                },
+                                "negative": {
+                                  "type": "number",
+                                  "format": "float"
+                                },
+                                "neutral": {
+                                  "type": "number",
+                                  "format": "float"
+                                },
+                                "mixed": {
+                                  "type": "number",
+                                  "format": "float"
+                                }
+                              }
+                            },
+                            "high_engagement_sentiment": {
+                              "type": "object",
+                              "properties": {
+                                "positive": {
+                                  "type": "integer"
+                                },
+                                "negative": {
+                                  "type": "integer"
+                                }
+                              }
+                            },
+                            "product_name": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "content_analyzed": {
+                          "type": "integer"
+                        },
+                        "detailed_results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string"
+                              },
+                              "sentiment": {
+                                "type": "string"
+                              },
+                              "confidence": {
+                                "type": "number",
+                                "format": "float"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "engagement": {
+                                "type": "object"
+                              }
+                            }
+                          }
+                        },
+                        "storage_location": {
+                          "type": "string"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or analysis failed",
+            "description": "Bad request or analysis failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -53,15 +190,49 @@
     },
     "/generate_action_items": {
       "post": {
+        "operationId": "generate_action_items",
         "summary": "Generate actionable insights from sentiment data",
         "description": "Uses AWS Bedrock to generate prioritized action items and marketing recommendations based on sentiment analysis results",
-        "operationId": "generateActionItems",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ActionItemsRequest"
+                "type": "object",
+                "required": ["sentiment_data"],
+                "properties": {
+                  "analysis_id": {
+                    "type": "string",
+                    "description": "Optional ID of existing sentiment analysis"
+                  },
+                  "search_query": {
+                    "type": "string",
+                    "description": "Optional search query for fresh analysis"
+                  },
+                  "sentiment_data": {
+                    "type": "object",
+                    "description": "Sentiment analysis results",
+                    "properties": {
+                      "search_query": {
+                        "type": "string"
+                      },
+                      "sentiment_summary": {
+                        "type": "object"
+                      },
+                      "detailed_results": {
+                        "type": "array"
+                      }
+                    }
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "description": "Optional product identifier"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "Optional user identifier"
+                  }
+                }
               }
             }
           }
@@ -72,17 +243,95 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ActionItemsResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "action_id": {
+                          "type": "string"
+                        },
+                        "product_id": {
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "source_analysis_id": {
+                          "type": "string"
+                        },
+                        "search_query": {
+                          "type": "string"
+                        },
+                        "action_items": {
+                          "type": "object",
+                          "properties": {
+                            "high_priority": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "medium_priority": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "low_priority": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "content_recommendations": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "product_improvements": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "generated_insights": {
+                          "type": "string"
+                        },
+                        "storage_location": {
+                          "type": "string"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or generation failed",
+            "description": "Bad request or generation failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -92,15 +341,34 @@
     },
     "/comprehensive_sentiment_analysis": {
       "post": {
-        "summary": "Complete sentiment analysis and action item generation",
-        "description": "Performs full sentiment analysis and generates actionable insights in a single operation, combining YouTube, news, and social media analysis with Bedrock-powered recommendations",
-        "operationId": "comprehensiveSentimentAnalysis",
+        "operationId": "comprehensive_sentiment_analysis",
+        "summary": "Complete sentiment analysis and action generation",
+        "description": "Performs full sentiment analysis and generates actionable insights in a single operation",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ComprehensiveAnalysisRequest"
+                "type": "object",
+                "required": ["search_query"],
+                "properties": {
+                  "search_query": {
+                    "type": "string",
+                    "description": "Product, brand, or topic to analyze"
+                  },
+                  "product_name": {
+                    "type": "string",
+                    "description": "Optional specific product name"
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "description": "Optional product identifier"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "Optional user identifier"
+                  }
+                }
               }
             }
           }
@@ -111,443 +379,193 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ComprehensiveAnalysisResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "analysis_id": {
+                          "type": "string"
+                        },
+                        "product_id": {
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "search_query": {
+                          "type": "string"
+                        },
+                        "product_name": {
+                          "type": "string"
+                        },
+                        "sentiment_analysis": {
+                          "type": "object",
+                          "description": "Full sentiment analysis results",
+                          "properties": {
+                            "analysis_id": {
+                              "type": "string"
+                            },
+                            "sentiment_summary": {
+                              "type": "object",
+                              "properties": {
+                                "overall_sentiment": {
+                                  "type": "string",
+                                  "enum": [
+                                    "positive",
+                                    "negative",
+                                    "neutral",
+                                    "mixed"
+                                  ]
+                                },
+                                "confidence": {
+                                  "type": "number",
+                                  "format": "float"
+                                },
+                                "total_analyzed": {
+                                  "type": "integer"
+                                },
+                                "sentiment_percentages": {
+                                  "type": "object",
+                                  "properties": {
+                                    "positive": {
+                                      "type": "number",
+                                      "format": "float"
+                                    },
+                                    "negative": {
+                                      "type": "number",
+                                      "format": "float"
+                                    },
+                                    "neutral": {
+                                      "type": "number",
+                                      "format": "float"
+                                    },
+                                    "mixed": {
+                                      "type": "number",
+                                      "format": "float"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "content_analyzed": {
+                              "type": "integer"
+                            },
+                            "detailed_results": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          }
+                        },
+                        "action_items": {
+                          "type": "object",
+                          "description": "Generated action items",
+                          "properties": {
+                            "action_id": {
+                              "type": "string"
+                            },
+                            "action_items": {
+                              "type": "object",
+                              "properties": {
+                                "high_priority": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "medium_priority": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "low_priority": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "content_recommendations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "product_improvements": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "generated_insights": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "comprehensive_insights": {
+                          "type": "object",
+                          "properties": {
+                            "overall_sentiment": {
+                              "type": "string",
+                              "enum": [
+                                "positive",
+                                "negative",
+                                "neutral",
+                                "mixed"
+                              ]
+                            },
+                            "priority_actions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "key_insights": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "storage_location": {
+                          "type": "string"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or analysis failed",
+            "description": "Bad request or analysis failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "SentimentAnalysisRequest": {
-        "type": "object",
-        "required": ["search_query"],
-        "properties": {
-          "search_query": {
-            "type": "string",
-            "description": "The product, brand, or topic to analyze sentiment for",
-            "example": "iPhone 15 Pro"
-          },
-          "product_name": {
-            "type": "string",
-            "description": "Specific product name (defaults to search_query if not provided)",
-            "example": "iPhone 15 Pro Max"
-          },
-          "product_id": {
-            "type": "string",
-            "description": "Unique product identifier (auto-generated if not provided)",
-            "example": "prod_123456"
-          },
-          "user_id": {
-            "type": "string",
-            "description": "User identifier (defaults to 'anonymous')",
-            "example": "user_789"
-          }
-        }
-      },
-      "ActionItemsRequest": {
-        "type": "object",
-        "required": ["sentiment_data"],
-        "properties": {
-          "analysis_id": {
-            "type": "string",
-            "description": "ID of existing sentiment analysis (optional if sentiment_data provided)",
-            "example": "analysis_123"
-          },
-          "search_query": {
-            "type": "string",
-            "description": "Search query to perform fresh sentiment analysis (optional if sentiment_data provided)",
-            "example": "iPhone 15 Pro"
-          },
-          "sentiment_data": {
-            "type": "object",
-            "description": "Existing sentiment analysis results to generate action items from",
-            "properties": {
-              "search_query": {
-                "type": "string"
-              },
-              "sentiment_summary": {
-                "type": "object"
-              },
-              "detailed_results": {
-                "type": "array"
-              }
-            }
-          },
-          "product_id": {
-            "type": "string",
-            "description": "Unique product identifier (auto-generated if not provided)",
-            "example": "prod_123456"
-          },
-          "user_id": {
-            "type": "string",
-            "description": "User identifier (defaults to 'anonymous')",
-            "example": "user_789"
-          }
-        }
-      },
-      "ComprehensiveAnalysisRequest": {
-        "type": "object",
-        "required": ["search_query"],
-        "properties": {
-          "search_query": {
-            "type": "string",
-            "description": "The product, brand, or topic to analyze",
-            "example": "iPhone 15 Pro"
-          },
-          "product_name": {
-            "type": "string",
-            "description": "Specific product name (defaults to search_query if not provided)",
-            "example": "iPhone 15 Pro Max"
-          },
-          "product_id": {
-            "type": "string",
-            "description": "Unique product identifier (auto-generated if not provided)",
-            "example": "prod_123456"
-          },
-          "user_id": {
-            "type": "string",
-            "description": "User identifier (defaults to 'anonymous')",
-            "example": "user_789"
-          }
-        }
-      },
-      "SentimentAnalysisResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "example": true
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "analysis_id": {
-                "type": "string",
-                "description": "Unique identifier for this analysis",
-                "example": "analysis_123456"
-              },
-              "product_id": {
-                "type": "string",
-                "example": "prod_123456"
-              },
-              "user_id": {
-                "type": "string",
-                "example": "user_789"
-              },
-              "search_query": {
-                "type": "string",
-                "example": "iPhone 15 Pro"
-              },
-              "product_name": {
-                "type": "string",
-                "example": "iPhone 15 Pro Max"
-              },
-              "sentiment_summary": {
-                "type": "object",
-                "properties": {
-                  "overall_sentiment": {
-                    "type": "string",
-                    "enum": ["positive", "negative", "neutral", "mixed"],
-                    "example": "positive"
-                  },
-                  "confidence": {
-                    "type": "number",
-                    "format": "float",
-                    "example": 0.85
-                  },
-                  "total_analyzed": {
-                    "type": "integer",
-                    "example": 150
-                  },
-                  "sentiment_percentages": {
-                    "type": "object",
-                    "properties": {
-                      "positive": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 65.5
-                      },
-                      "negative": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 15.2
-                      },
-                      "neutral": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 12.3
-                      },
-                      "mixed": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 7.0
-                      }
-                    }
-                  }
-                }
-              },
-              "content_analyzed": {
-                "type": "integer",
-                "description": "Number of content pieces analyzed",
-                "example": 150
-              },
-              "detailed_results": {
-                "type": "array",
-                "description": "Sample of detailed sentiment analysis results",
-                "items": {
                   "type": "object",
                   "properties": {
-                    "source": {
-                      "type": "string",
-                      "example": "YouTube"
+                    "success": {
+                      "type": "boolean"
                     },
-                    "sentiment": {
-                      "type": "string",
-                      "example": "positive"
-                    },
-                    "confidence": {
-                      "type": "number",
-                      "format": "float",
-                      "example": 0.92
-                    },
-                    "text": {
-                      "type": "string",
-                      "example": "Great camera quality on this phone!"
+                    "error": {
+                      "type": "string"
                     }
                   }
                 }
-              },
-              "storage_location": {
-                "type": "string",
-                "example": "DynamoDB table: products"
-              },
-              "timestamp": {
-                "type": "string",
-                "format": "date-time",
-                "example": "2024-01-15T10:30:00Z"
               }
             }
-          }
-        }
-      },
-      "ActionItemsResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "example": true
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "action_id": {
-                "type": "string",
-                "description": "Unique identifier for this action items generation",
-                "example": "action_123456"
-              },
-              "product_id": {
-                "type": "string",
-                "example": "prod_123456"
-              },
-              "user_id": {
-                "type": "string",
-                "example": "user_789"
-              },
-              "source_analysis_id": {
-                "type": "string",
-                "description": "ID of the sentiment analysis this is based on",
-                "example": "analysis_123"
-              },
-              "search_query": {
-                "type": "string",
-                "example": "iPhone 15 Pro"
-              },
-              "action_items": {
-                "type": "object",
-                "properties": {
-                  "high_priority": {
-                    "type": "array",
-                    "description": "Immediate actions (1-2 weeks)",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Address camera quality concerns in customer service responses",
-                      "Launch targeted social media campaign highlighting positive reviews"
-                    ]
-                  },
-                  "medium_priority": {
-                    "type": "array",
-                    "description": "Short-term strategy (1-3 months)",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Improve product photography to better showcase features",
-                      "Develop response templates for common customer concerns"
-                    ]
-                  },
-                  "low_priority": {
-                    "type": "array",
-                    "description": "Long-term planning (3-12 months)",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Consider feature enhancements based on user feedback",
-                      "Explore partnership opportunities with influencers"
-                    ]
-                  },
-                  "content_recommendations": {
-                    "type": "array",
-                    "description": "Content and messaging recommendations",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Emphasize camera capabilities in marketing materials",
-                      "Create tutorial content addressing common user questions"
-                    ]
-                  },
-                  "product_improvements": {
-                    "type": "array",
-                    "description": "Product improvement suggestions",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Enhance low-light photography performance",
-                      "Improve user interface for camera settings"
-                    ]
-                  }
-                }
-              },
-              "generated_insights": {
-                "type": "string",
-                "description": "Raw insights generated by Bedrock",
-                "example": "Based on the sentiment analysis, the product shows strong positive reception overall..."
-              },
-              "storage_location": {
-                "type": "string",
-                "example": "DynamoDB table: products"
-              },
-              "timestamp": {
-                "type": "string",
-                "format": "date-time",
-                "example": "2024-01-15T10:30:00Z"
-              }
-            }
-          }
-        }
-      },
-      "ComprehensiveAnalysisResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "example": true
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "analysis_id": {
-                "type": "string",
-                "description": "Unique identifier for this comprehensive analysis",
-                "example": "comp_123456"
-              },
-              "product_id": {
-                "type": "string",
-                "example": "prod_123456"
-              },
-              "user_id": {
-                "type": "string",
-                "example": "user_789"
-              },
-              "search_query": {
-                "type": "string",
-                "example": "iPhone 15 Pro"
-              },
-              "product_name": {
-                "type": "string",
-                "example": "iPhone 15 Pro Max"
-              },
-              "sentiment_analysis": {
-                "$ref": "#/components/schemas/SentimentAnalysisResponse/properties/data"
-              },
-              "action_items": {
-                "$ref": "#/components/schemas/ActionItemsResponse/properties/data"
-              },
-              "comprehensive_insights": {
-                "type": "object",
-                "properties": {
-                  "overall_sentiment": {
-                    "type": "string",
-                    "enum": ["positive", "negative", "neutral", "mixed"],
-                    "example": "positive"
-                  },
-                  "priority_actions": {
-                    "type": "array",
-                    "description": "Top priority actions from the analysis",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Address camera quality concerns immediately",
-                      "Capitalize on positive social media momentum"
-                    ]
-                  },
-                  "key_insights": {
-                    "type": "array",
-                    "description": "Key insights combining sentiment and action data",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Strong positive sentiment around camera quality",
-                      "Some concerns about battery life need addressing",
-                      "Social media engagement is high for positive content"
-                    ]
-                  }
-                }
-              },
-              "storage_location": {
-                "type": "string",
-                "example": "DynamoDB table: products"
-              },
-              "timestamp": {
-                "type": "string",
-                "format": "date-time",
-                "example": "2024-01-15T10:30:00Z"
-              }
-            }
-          }
-        }
-      },
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "example": false
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message describing what went wrong",
-            "example": "Sentiment analysis failed: Invalid search query"
           }
         }
       }
