@@ -1,6 +1,7 @@
 import json
 import boto3
 import uuid
+import os
 from datetime import datetime
 from botocore.exceptions import ClientError
 
@@ -12,24 +13,12 @@ s3 = boto3.client('s3')
 def lambda_handler(event, context):
     """
     Lambda handler for image analysis using Amazon Rekognition.
-    Analyzes        if function_name == 'analyze_product_image' or api_path == '/analyze-product-image':
-            # Convert to internal format
-            product_info = parameters.get('product_info', {})
-            s3_info = parameters.get('s3_info', {})
-            
-            internal_params = {
-                'product_info': {
-                    'name': product_info.get('name', '') if isinstance(product_info, dict) else '',
-                    'description': product_info.get('description', '') if isinstance(product_info, dict) else '',
-                    'category': product_info.get('category', '') if isinstance(product_info, dict) else ''
-                },
-                's3_info': {
-                    'bucket': s3_info.get('bucket', '') if isinstance(s3_info, dict) else '',
-                    'key': s3_info.get('key', '') if isinstance(s3_info, dict) else ''
-                }
-            }es and stores structured data in DynamoDB.
     
-    Handles both direct invocation and Bedrock agent invocation formats.
+    Can be invoked by:
+    1. Bedrock agent (action group) - Returns Bedrock format response with product_id
+    2. Intent parser Lambda - Returns JSON response with product_id
+    
+    Analyzes product images and stores results in DynamoDB with analysis_status='image_analyzed'
     """
     try:
         print(f"Received event: {json.dumps(event)}")
@@ -38,7 +27,7 @@ def lambda_handler(event, context):
         if 'messageVersion' in event and 'requestBody' in event:
             return handle_bedrock_agent_invocation(event, context)
         
-        # Handle direct invocation format
+        # Handle direct invocation from intent parser
         action_group = event.get('actionGroup')
         function_name = event.get('function')
         parameters = event.get('parameters', {})
@@ -61,25 +50,26 @@ def lambda_handler(event, context):
             
     except Exception as e:
         print(f"Error in lambda_handler: {str(e)}")
-        return create_bedrock_error_response(f"Internal error: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}")
+
 
 def handle_image_analysis(parameters, context):
     """
     Handle product image analysis using Rekognition.
     
     Args:
-        parameters: Dictionary containing product_info and s3_info
+        parameters: Dictionary containing product_info and s3_info (JSON strings or dicts)
         context: Lambda context object
         
     Returns:
-        Dictionary with analysis results
+        Dictionary with analysis results and product_id
     """
     try:
-        # Validate required parameters
+        # Get raw parameters
         product_info_raw = parameters.get('product_info', {})
         s3_info_raw = parameters.get('s3_info', {})
         
-        # Parse JSON strings if they are strings
+        # Parse JSON strings if needed
         if isinstance(product_info_raw, str):
             try:
                 product_info = json.loads(product_info_raw)
@@ -96,58 +86,64 @@ def handle_image_analysis(parameters, context):
         else:
             s3_info = s3_info_raw
         
-        if not product_info.get('name'):
-            return create_error_response("Product name is required")
+        # Ensure we have dicts
+        if not isinstance(product_info, dict):
+            product_info = {}
+        if not isinstance(s3_info, dict):
+            s3_info = {}
         
-        if not s3_info.get('bucket') or not s3_info.get('key'):
-            return create_error_response("S3 bucket and key are required")
+        # Extract values with fallbacks
+        product_name = (product_info.get('name') or '').strip() or "Analyzed Product"
+        s3_key = (s3_info.get('key') or '').strip()
         
-        bucket = s3_info['bucket']
-        key = s3_info['key']
+        # Validate S3 key
+        if not s3_key:
+            return create_error_response("S3 key is required")
+        
+        bucket = s3_info.get('bucket') or os.environ.get('S3_BUCKET_NAME', 'degenerals-mi-dev-images')
         
         # Verify S3 object exists
         try:
-            s3.head_object(Bucket=bucket, Key=key)
+            s3.head_object(Bucket=bucket, Key=s3_key)
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
-                return create_error_response(f"Image not found in S3: s3://{bucket}/{key}")
+                return create_error_response(f"Image not found in S3: s3://{bucket}/{s3_key}")
             raise
         
         # Perform Rekognition analysis
-        analysis_results = analyze_image_with_rekognition(bucket, key)
+        analysis_results = analyze_image_with_rekognition(bucket, s3_key)
         
         # Create structured data record
         product_record = create_product_record(
             product_info=product_info,
-            s3_info=s3_info,
+            s3_info={'bucket': bucket, 'key': s3_key},
             analysis_results=analysis_results,
             request_id=context.aws_request_id
         )
         
         # Save to DynamoDB
-        table_name = "products"
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'products')
         save_product_to_dynamodb(table_name, product_record)
         
-        # Return structured response for Bedrock agent
-        return create_success_response({
+        # Return structured response with product_id
+        response_data = {
+            'success': True,
             'product_id': product_record['product_id'],
-            'product_name': product_info['name'],
-            'detected_labels': analysis_results['labels'][:10],  # Top 10 labels
-            'confidence_summary': {
-                'high_confidence_labels': [
-                    label for label in analysis_results['labels'] 
-                    if label['confidence'] >= 80
-                ],
-                'total_labels_detected': len(analysis_results['labels'])
-            },
-            'analysis_timestamp': product_record['created_at'],
-            'storage_location': f"DynamoDB table: {table_name}",
-            'recommendations': generate_campaign_recommendations(analysis_results['labels'])
-        })
+            'product_name': product_name,
+            'detected_labels': analysis_results['labels'][:10],
+            'analysis_status': 'image_analyzed',
+            'timestamp': product_record['created_at']
+        }
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps(response_data)
+        }
         
     except Exception as e:
         print(f"Error in handle_image_analysis: {str(e)}")
         return create_error_response(f"Image analysis failed: {str(e)}")
+
 
 def analyze_image_with_rekognition(bucket, key):
     """
@@ -163,14 +159,9 @@ def analyze_image_with_rekognition(bucket, key):
     try:
         # Detect labels in the image
         response = rekognition.detect_labels(
-            Image={
-                'S3Object': {
-                    'Bucket': bucket,
-                    'Name': key
-                }
-            },
-            MaxLabels=50,  # Get up to 50 labels
-            MinConfidence=60  # Minimum confidence threshold
+            Image={'S3Object': {'Bucket': bucket, 'Name': key}},
+            MaxLabels=50,
+            MinConfidence=60
         )
         
         # Process labels
@@ -201,6 +192,7 @@ def analyze_image_with_rekognition(bucket, key):
         error_message = e.response['Error']['Message']
         print(f"Rekognition error: {error_code} - {error_message}")
         raise Exception(f"Rekognition analysis failed: {error_message}")
+
 
 def create_product_record(product_info, s3_info, analysis_results, request_id):
     """
@@ -238,20 +230,22 @@ def create_product_record(product_info, s3_info, analysis_results, request_id):
     return {
         'product_id': product_id,
         'user_id': user_id,
-        'product_name': product_info['name'],
+        'product_name': product_info.get('name', 'Unknown Product'),
         'product_description': product_info.get('description', ''),
         'product_category': product_info.get('category', ''),
         's3_bucket': s3_info['bucket'],
         's3_key': s3_info['key'],
         's3_url': f"s3://{s3_info['bucket']}/{s3_info['key']}",
-        'labels': convert_floats(analysis_results['labels']),
+        'image_labels': convert_floats(analysis_results['labels']),
         'total_labels_detected': analysis_results['total_labels'],
         'high_confidence_labels_count': analysis_results['high_confidence_count'],
         'rekognition_metadata': analysis_results['rekognition_response_metadata'],
         'created_at': timestamp,
+        'updated_at': timestamp,
         'lambda_request_id': request_id,
-        'analysis_status': 'completed'
+        'analysis_status': 'image_analyzed'  # Key indicator that image has been analyzed
     }
+
 
 def save_product_to_dynamodb(table_name, record):
     """
@@ -272,69 +266,9 @@ def save_product_to_dynamodb(table_name, record):
         print(f"DynamoDB error: {error_code} - {error_message}")
         raise Exception(f"Failed to save product to DynamoDB: {error_message}")
 
-def generate_campaign_recommendations(labels):
-    """
-    Generate basic campaign recommendations based on detected labels.
-    
-    Args:
-        labels: List of detected labels with confidence scores
-        
-    Returns:
-        Dictionary with campaign recommendations
-    """
-    high_confidence_labels = [label for label in labels if label['confidence'] >= 80]
-    
-    recommendations = {
-        'primary_visual_elements': [label['name'] for label in high_confidence_labels[:5]],
-        'suggested_hashtags': [f"#{label['name'].lower().replace(' ', '')}" for label in high_confidence_labels[:8]],
-        'content_themes': extract_content_themes(high_confidence_labels),
-        'platform_suitability': assess_platform_suitability(high_confidence_labels)
-    }
-    
-    return recommendations
-
-def extract_content_themes(labels):
-    """Extract content themes based on label categories."""
-    themes = set()
-    for label in labels:
-        for category in label.get('categories', []):
-            if category in ['Technology', 'Fashion', 'Food and Drink', 'Sports', 'Nature']:
-                themes.add(category.lower())
-    return list(themes)
-
-def assess_platform_suitability(labels):
-    """Assess platform suitability based on visual elements."""
-    label_names = [label['name'].lower() for label in labels]
-    
-    suitability = {
-        'Instagram': 'High' if any(term in ' '.join(label_names) for term in ['person', 'fashion', 'food', 'lifestyle']) else 'Medium',
-        'TikTok': 'High' if any(term in ' '.join(label_names) for term in ['person', 'action', 'dynamic']) else 'Medium',
-        'LinkedIn': 'High' if any(term in ' '.join(label_names) for term in ['technology', 'business', 'professional']) else 'Low',
-        'Facebook': 'Medium',  # Generally suitable for most content
-    }
-    
-    return suitability
-
-def get_dynamodb_table_name():
-    """Get DynamoDB table name from environment variables."""
-    import os
-    table_name = os.environ.get('DYNAMODB_TABLE_NAME')
-    if not table_name:
-        raise Exception("DYNAMODB_TABLE_NAME environment variable not set")
-    return table_name
-
-def create_success_response(data):
-    """Create a successful response for Bedrock agent."""
-    return {
-        'statusCode': 200,
-        'body': json.dumps({
-            'success': True,
-            'data': data
-        })
-    }
 
 def create_error_response(error_message):
-    """Create an error response for direct invocation."""
+    """Create an error response."""
     return {
         'statusCode': 400,
         'body': json.dumps({
@@ -342,6 +276,76 @@ def create_error_response(error_message):
             'error': error_message
         })
     }
+
+
+def handle_bedrock_agent_invocation(event, context):
+    """Handle Bedrock agent invocation format."""
+    try:
+        request_body = event.get('requestBody', {})
+        content = request_body.get('content', {})
+        
+        function_name = event.get('function', '')
+        api_path = event.get('apiPath', '')
+        
+        print(f"Bedrock invocation - Function: {function_name}, API Path: {api_path}")
+        
+        # Parse properties array
+        json_body = {}
+        if 'application/json' in content and isinstance(content['application/json'], dict):
+            app_json = content['application/json']
+            if 'properties' in app_json:
+                for prop in app_json['properties']:
+                    prop_name = prop.get('name')
+                    prop_value = prop.get('value', '')
+                    
+                    if prop_name == 'product_info':
+                        try:
+                            json_body['product_info'] = json.loads(prop_value)
+                        except json.JSONDecodeError:
+                            return create_bedrock_error_response(f"Invalid product_info JSON", api_path)
+                    
+                    elif prop_name == 's3_info':
+                        try:
+                            json_body['s3_info'] = json.loads(prop_value)
+                        except json.JSONDecodeError:
+                            return create_bedrock_error_response(f"Invalid s3_info JSON", api_path)
+        
+        if not json_body:
+            return create_bedrock_error_response("Could not extract valid JSON from Bedrock request", api_path)
+        
+        print(f"Constructed JSON body: {json.dumps(json_body)}")
+        
+        if function_name == 'analyze_product_image' or api_path == '/analyze-product-image':
+            result = handle_image_analysis(json_body, context)
+            
+            if result.get('statusCode') == 200:
+                body_data = json.loads(result['body'])
+                return {
+                    'messageVersion': '1.0',
+                    'response': {
+                        'actionGroup': 'image-analysis',
+                        'apiPath': api_path,
+                        'httpMethod': 'POST',
+                        'httpStatusCode': 200,
+                        'responseBody': {
+                            'application/json': {
+                                'body': json.dumps(body_data)
+                            }
+                        }
+                    }
+                }
+            else:
+                error_data = json.loads(result['body'])
+                return create_bedrock_error_response(error_data.get('error', 'Unknown error'), api_path)
+        else:
+            return create_bedrock_error_response(f"Unknown function: {function_name}", api_path)
+            
+    except Exception as e:
+        print(f"Error in handle_bedrock_agent_invocation: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return create_bedrock_error_response(f"Internal error: {str(e)}", "/analyze-product-image")
+
 
 def create_bedrock_error_response(error_message, api_path='/analyze-product-image'):
     """Create a Bedrock agent compatible error response."""
@@ -362,93 +366,3 @@ def create_bedrock_error_response(error_message, api_path='/analyze-product-imag
             }
         }
     }
-
-def handle_bedrock_agent_invocation(event, context):
-    """Handle Bedrock agent invocation format."""
-    try:
-        # Extract the request body content directly
-        request_body = event.get('requestBody', {})
-        content = request_body.get('content', {})
-        
-        # Parse function and API path
-        function_name = event.get('function', '')
-        api_path = event.get('apiPath', '')
-        
-        print(f"Function: {function_name}, API Path: {api_path}")
-        print(f"Content: {json.dumps(content, default=str)}")
-        
-        # Handle the specific Bedrock agent format with properties array
-        json_body = None
-        if 'application/json' in content and isinstance(content['application/json'], dict):
-            app_json = content['application/json']
-            if 'properties' in app_json:
-                # Convert properties array to proper JSON structure
-                json_body = {}
-                for prop in app_json['properties']:
-                    prop_name = prop.get('name')
-                    prop_value = prop.get('value', '')
-                    
-                    if prop_name == 'product_info':
-                        # Parse the product_info string
-                        try:
-                            # Fix the JSON format
-                            fixed_value = '{' + prop_value + '}'
-                            json_body['product_info'] = json.loads(fixed_value)
-                        except json.JSONDecodeError:
-                            return create_bedrock_error_response(f"Invalid product_info format: {prop_value}", api_path)
-                    
-                    elif prop_name == 's3_info':
-                        # Parse the s3_info string
-                        try:
-                            # Fix the JSON format
-                            fixed_value = '{' + prop_value + '}'
-                            json_body['s3_info'] = json.loads(fixed_value)
-                        except json.JSONDecodeError:
-                            return create_bedrock_error_response(f"Invalid s3_info format: {prop_value}", api_path)
-        
-        if not json_body:
-            return create_bedrock_error_response("Could not extract valid JSON from Bedrock request", api_path)
-        
-        print(f"Constructed JSON body: {json.dumps(json_body, default=str)}")
-        
-        if function_name == 'analyze_product_image' or api_path in ['/analyze-image', '/analyze-product-image']:
-            # Validate required fields
-            product_info = json_body.get('product_info')
-            s3_info = json_body.get('s3_info')
-            
-            if not product_info:
-                return create_bedrock_error_response("product_info is required", api_path)
-            if not s3_info:
-                return create_bedrock_error_response("s3_info is required", api_path)
-            
-            # Call the analysis function with the extracted parameters
-            result = handle_image_analysis(json_body, context)
-            
-            # Convert response to Bedrock format
-            if result.get('statusCode') == 200:
-                body_data = json.loads(result['body'])
-                return {
-                    'messageVersion': '1.0',
-                    'response': {
-                        'actionGroup': 'image-analysis',
-                        'apiPath': api_path,  # Use the same path that was called
-                        'httpMethod': 'POST',
-                        'httpStatusCode': 200,
-                        'responseBody': {
-                            'application/json': {
-                                'body': json.dumps(body_data)
-                            }
-                        }
-                    }
-                }
-            else:
-                error_data = json.loads(result['body'])
-                return create_bedrock_error_response(error_data.get('error', 'Unknown error'), api_path)
-        else:
-            return create_bedrock_error_response(f"Unknown function: {function_name}, path: {api_path}", api_path)
-            
-    except Exception as e:
-        print(f"Error in handle_bedrock_agent_invocation: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return create_bedrock_error_response(f"Processing error: {str(e)}")
