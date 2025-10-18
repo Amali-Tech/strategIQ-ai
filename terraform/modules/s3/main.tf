@@ -41,3 +41,44 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
     }
   }
 }
+
+resource "aws_s3_bucket" "generated_assets" {
+  bucket = "${var.project_name}-${var.environment}-generated-assets"
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Generated assets storage for campaign generation"
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "generated_assets" {
+  bucket = aws_s3_bucket.generated_assets.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "POST", "GET"]
+    allowed_origins = var.allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "generated_assets" {
+  bucket = aws_s3_bucket.generated_assets.id
+
+  rule {
+    id     = "delete_after_days"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.days
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.days
+    }
+  }
+}

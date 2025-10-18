@@ -23,37 +23,70 @@ resource "aws_apigatewayv2_api" "main" {
   }
 }
 
-# Route: POST /api/upload/presigned-url
+# --- Campaign Generation Endpoint ---
+resource "aws_apigatewayv2_route" "campaign_tier_1" {
+  count     = var.intent_parser_function_name != "" ? 1 : 0
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /api/campaigns/tier-1"
+  target    = "integrations/${aws_apigatewayv2_integration.intent_parser[0].id}"
+}
+
+# --- Upload Endpoints ---
 resource "aws_apigatewayv2_route" "presigned_url" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /api/upload/presigned-url"
+  route_key = "POST /api/uploads/presigned-url"
   target    = "integrations/${aws_apigatewayv2_integration.presigned_url.id}"
 }
 
-# Route: GET /api/upload/{uploadId}
 resource "aws_apigatewayv2_route" "upload_status" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /api/upload/{uploadId}"
+  route_key = "GET /api/uploads/{uploadId}"
   target    = "integrations/${aws_apigatewayv2_integration.upload_status.id}"
 }
 
-# Integration for presigned URL generation
 resource "aws_apigatewayv2_integration" "presigned_url" {
   api_id             = aws_apigatewayv2_api.main.id
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
   integration_uri    = var.upload_handler_invoke_arn
-  
   payload_format_version = "2.0"
 }
 
-# Integration for upload status checking (uses same Lambda function)
 resource "aws_apigatewayv2_integration" "upload_status" {
   api_id             = aws_apigatewayv2_api.main.id
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
   integration_uri    = var.upload_handler_invoke_arn
-  
+  payload_format_version = "2.0"
+}
+
+# --- Asset Generation Endpoints ---
+resource "aws_apigatewayv2_route" "assets_post" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /api/assets/"
+  target    = "integrations/${aws_apigatewayv2_integration.assets_sqs.id}"
+}
+
+resource "aws_apigatewayv2_route" "assets_status" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /api/assets/{request_id}"
+  target    = "integrations/${aws_apigatewayv2_integration.assets_status.id}"
+}
+
+resource "aws_apigatewayv2_integration" "assets_sqs" {
+  api_id                = aws_apigatewayv2_api.main.id
+  integration_type      = "AWS_PROXY"
+  integration_method    = "POST"
+  integration_uri       = var.assets_sqs_arn
+  integration_subtype   = "SQS-SendMessage"
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_integration" "assets_status" {
+  api_id             = aws_apigatewayv2_api.main.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = var.image_generation_status_invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -91,33 +124,7 @@ resource "aws_lambda_permission" "api_gateway_invoke_upload_status" {
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*/*"
 }
 
-# Intent Parser Routes (only create if intent parser is deployed)
-resource "aws_apigatewayv2_route" "campaigns" {
-  count     = var.intent_parser_function_name != "" ? 1 : 0
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /api/campaigns"
-  target    = "integrations/${aws_apigatewayv2_integration.intent_parser[0].id}"
-}
-
-resource "aws_apigatewayv2_route" "comprehensive_campaign" {
-  count     = var.intent_parser_function_name != "" ? 1 : 0
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /api/comprehensive-campaign"
-  target    = "integrations/${aws_apigatewayv2_integration.intent_parser[0].id}"
-}
-
-# Integration for intent parser
-resource "aws_apigatewayv2_integration" "intent_parser" {
-  count              = var.intent_parser_function_name != "" ? 1 : 0
-  api_id             = aws_apigatewayv2_api.main.id
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-  integration_uri    = var.intent_parser_invoke_arn
-  
-  payload_format_version = "2.0"
-}
-
-# Lambda permissions for API Gateway to invoke the intent parser function
+# Lambda permission for campaign generation (intent parser)
 resource "aws_lambda_permission" "api_gateway_invoke_intent_parser" {
   count         = var.intent_parser_function_name != "" ? 1 : 0
   statement_id  = "AllowExecutionFromAPIGateway-IntentParser"
@@ -127,39 +134,20 @@ resource "aws_lambda_permission" "api_gateway_invoke_intent_parser" {
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*/*"
 }
 
-# Route: GET /api/campaigns/{campaign_id}/status
-resource "aws_apigatewayv2_route" "campaign_status_detail" {
-  count     = var.campaign_status_function_name != "" ? 1 : 0
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /api/campaigns/{campaign_id}/status"
-  target    = "integrations/${aws_apigatewayv2_integration.campaign_status[0].id}"
-}
-
-# Route: GET /api/campaigns/status (list campaigns)
-resource "aws_apigatewayv2_route" "campaign_status_list" {
-  count     = var.campaign_status_function_name != "" ? 1 : 0
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /api/campaigns/status"
-  target    = "integrations/${aws_apigatewayv2_integration.campaign_status[0].id}"
-}
-
-# Integration for campaign status
-resource "aws_apigatewayv2_integration" "campaign_status" {
-  count              = var.campaign_status_function_name != "" ? 1 : 0
-  api_id             = aws_apigatewayv2_api.main.id
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-  integration_uri    = var.campaign_status_invoke_arn
-  
-  payload_format_version = "2.0"
-}
-
-# Lambda permissions for API Gateway to invoke the campaign status function
-resource "aws_lambda_permission" "api_gateway_invoke_campaign_status" {
-  count         = var.campaign_status_function_name != "" ? 1 : 0
-  statement_id  = "AllowExecutionFromAPIGateway-CampaignStatus"
+# Lambda permission for image generation status
+resource "aws_lambda_permission" "api_gateway_invoke_image_generation_status" {
+  statement_id  = "AllowExecutionFromAPIGateway-ImageGenerationStatus"
   action        = "lambda:InvokeFunction"
-  function_name = var.campaign_status_function_name
+  function_name = var.image_generation_status_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*/*"
+}
+
+resource "aws_apigatewayv2_integration" "intent_parser" {
+  count                  = var.intent_parser_function_name != "" ? 1 : 0
+  api_id                 = aws_apigatewayv2_api.main.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = var.intent_parser_invoke_arn
+  payload_format_version = "2.0"
 }

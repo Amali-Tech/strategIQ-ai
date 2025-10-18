@@ -54,3 +54,18 @@ variable "campaign_status_function_name" {
   type        = string
   default     = ""
 }
+
+variable "assets_sqs_arn" {
+  description = "ARN of the SQS queue for asset generation requests"
+  type        = string
+}
+
+variable "image_generation_status_invoke_arn" {
+  description = "Invoke ARN of the image generation status Lambda function"
+  type        = string
+}
+
+variable "image_generation_status_function_name" {
+  description = "Name of the image generation status Lambda function"
+  type        = string
+}
