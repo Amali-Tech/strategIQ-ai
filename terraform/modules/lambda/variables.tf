@@ -1,57 +1,77 @@
-# Lambda Module Variables
-
-variable "project_name" {
-  description = "Name of the project"
+variable "project_root" {
+  description = "Absolute path to the project root directory containing lambda-handlers"
   type        = string
 }
 
-variable "environment" {
-  description = "Environment name (dev, staging, prod)"
+variable "lambda_image_analysis_function_name" {
+  description = "Name of the image analysis Lambda function"
+  type        = string
+}
+
+variable "lambda_data_enrichment_function_name" {
+  description = "Name of the data enrichment Lambda function"
+  type        = string
+}
+
+variable "lambda_cultural_intelligence_function_name" {
+  description = "Name of the cultural intelligence Lambda function"
+  type        = string
+}
+
+variable "lambda_intent_parser_function_name" {
+  description = "Name of the intent parser Lambda function"
+  type        = string
+}
+
+variable "lambda_generate_images_function_name" {
+  description = "Name of the image generation Lambda function"
+  type        = string
+}
+
+variable "lambda_image_generation_status_function_name" {
+  description = "Name of the image generation status Lambda function"
+  type        = string
+}
+
+variable "dynamodb_table_name" {
+  description = "Name of the DynamoDB table used for campaign and image generation tracking"
   type        = string
 }
 
 variable "s3_bucket_name" {
-  description = "Name of the S3 bucket for image storage"
+  description = "Name of the S3 bucket for storing images"
   type        = string
 }
 
-variable "lambda_execution_role_arn" {
-  description = "ARN of the Lambda execution role"
+variable "bedrock_agent_id" {
+  description = "Bedrock agent ID for campaign orchestration"
   type        = string
 }
 
-variable "supervisor_agent_id" {
-  description = "ID of the Bedrock supervisor agent"
+variable "bedrock_agent_alias_id" {
+  description = "Bedrock agent alias ID for campaign orchestration"
   type        = string
-  default     = ""  # Will be populated once Bedrock agent is created
 }
 
-variable "supervisor_agent_alias_id" {
-  description = "Alias ID of the Bedrock supervisor agent"
+variable "bedrock_nova_canvas_model_id" {
+  description = "Bedrock model ID for Nova Canvas image generation"
   type        = string
-  default     = ""  # Will be populated once Bedrock agent alias is created
+  default     = "amazon.nova-canvas-v1:0"
 }
 
-variable "campaign_status_table_name" {
-  description = "Name of the campaign status DynamoDB table"
+variable "api_key_youtube" {
+  description = "API key for YouTube Data API (if required by enrichment Lambda)"
   type        = string
   default     = ""
 }
 
-variable "campaign_events_bus_name" {
-  description = "Name of the campaign events EventBridge bus"
+variable "api_key_other" {
+  description = "Other external API keys required by Lambda functions (optional)"
   type        = string
   default     = ""
 }
 
-variable "visual_asset_queue_arn" {
-  description = "ARN of the visual asset generation SQS queue"
+variable "lambda_upload_handler_function_name" {
+  description = "Name of the upload handler Lambda function"
   type        = string
-  default     = ""
-}
-
-variable "image_analysis_role_arn" {
-  description = "ARN of the dedicated IAM role for image analysis Lambda"
-  type        = string
-  default     = ""
 }
