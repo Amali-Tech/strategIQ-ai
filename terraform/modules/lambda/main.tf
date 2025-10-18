@@ -1,320 +1,239 @@
 # Lambda Module
 # This module manages lambda resources for the AWS AI Hackathon project
+# Deploys action group handlers + utility functions (not associated with Bedrock agent)
 
-# Create the proper directory structure for the lambda layer using local-exec
-resource "null_resource" "create_layer_structure" {
-  triggers = {
-    # Trigger recreation when python directory contents change
-    python_hash = sha256(join("", [for f in fileset("${path.root}/../python", "**") : filesha256("${path.root}/../python/${f}")]))
-  }
-  
-  provisioner "local-exec" {
-    command = <<-EOT
-      cd "${path.root}/.."
-      rm -f lambda_layer.zip
-      zip -r lambda_layer.zip python/ \
-        -x "python/**/__pycache__/**" \
-           "python/**/*.pyc" \
-           "python/**/.pytest_cache/**" \
-           "python/**/tests/**" \
-           "python/**/.DS_Store"
-    EOT
-  }
-}
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
-# Lambda Layer for shared dependencies
-resource "aws_lambda_layer_version" "shared_dependencies" {
-  filename            = "${path.root}/../lambda_layer.zip"
-  layer_name          = "${var.project_name}-${var.environment}-shared-dependencies"
-  source_code_hash    = null_resource.create_layer_structure.triggers.python_hash
-  
-  compatible_runtimes = ["python3.11", "python3.12"]
-  description         = "Shared dependencies for all Lambda functions"
-  
-  depends_on = [null_resource.create_layer_structure]
-}
-
-# Create ZIP files for each Lambda function
-data "archive_file" "analyze_image_lambda" {
+# Create ZIP file for Lambda function
+data "archive_file" "upload_handler_zip" {
   type        = "zip"
-  source_file = "${path.module}/scripts/analyse_image_lambda.py"
-  output_path = "${path.module}/zips/analyze_image_lambda.zip"
+  source_file = "${path.root}/../lambda/upload-handler/handler.py"
+  output_path = "${path.module}/upload_handler.zip"
 }
 
-data "archive_file" "generate_presigned_url_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/generate_pre-singed_url_lambda.py"
-  output_path = "${path.module}/zips/generate_presigned_url_lambda.zip"
-}
-
-data "archive_file" "enrichment_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/enrichment_lambda.py"
-  output_path = "${path.module}/zips/enrichment_lambda.zip"
-}
-
-data "archive_file" "campaign_generator_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/campaign_generator_lambda.py"
-  output_path = "${path.module}/zips/campaign_generator_lambda.zip"
-}
-
-data "archive_file" "get_status_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/get_status_lambda.py"
-  output_path = "${path.module}/zips/get_status_lambda.zip"
-}
-
-# Sentiment Analysis Lambda ZIP files
-data "archive_file" "comprehend_analysis_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/comprehend_analysis.py"
-  output_path = "${path.module}/zips/comprehend_analysis_lambda.zip"
-}
-
-data "archive_file" "action_items_generator_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/scripts/action_items_and_summary_generator.py"
-  output_path = "${path.module}/zips/action_items_generator_lambda.zip"
-}
-
-# Lambda Function: Analyze Image (triggered by S3 uploads)
-resource "aws_lambda_function" "analyze_image" {
-  filename         = data.archive_file.analyze_image_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-analyze-image"
-  role            = var.lambda_image_analysis_role_arn
-  handler         = "analyse_image_lambda.lambda_handler"
-  source_code_hash = data.archive_file.analyze_image_lambda.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 300
-  memory_size     = 1024
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
-  environment {
-    variables = {
-      DYNAMODB_TABLE_NAME = var.product_analysis_table_name
-    }
-  }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
-}
-
-# Lambda Function: Generate Presigned URL (API Gateway)
-resource "aws_lambda_function" "generate_presigned_url" {
-  filename         = data.archive_file.generate_presigned_url_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-generate-presigned-url"
-  role            = var.lambda_api_role_arn
-  handler         = "generate_pre-singed_url_lambda.lambda_handler"
-  source_code_hash = data.archive_file.generate_presigned_url_lambda.output_base64sha256
+# Upload handler Lambda function - Generates presigned S3 URLs
+resource "aws_lambda_function" "upload_handler" {
+  filename         = data.archive_file.upload_handler_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-upload-handler"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
   runtime         = "python3.11"
   timeout         = 30
-  memory_size     = 256
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
+
+  source_code_hash = data.archive_file.upload_handler_zip.output_base64sha256
+
   environment {
     variables = {
-      BUCKET_NAME = var.s3_bucket_name
+      S3_BUCKET_NAME = var.s3_bucket_name
+      PRESIGNED_URL_EXPIRATION = "3600"
     }
   }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Generate presigned S3 URLs and check upload status"
+  }
 }
 
-# Lambda Function: Data Enrichment (EventBridge Pipes)
-resource "aws_lambda_function" "enrichment" {
-  filename         = data.archive_file.enrichment_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-enrichment"
-  role            = var.lambda_image_analysis_role_arn
-  handler         = "enrichment_lambda.lambda_handler"
-  source_code_hash = data.archive_file.enrichment_lambda.output_base64sha256
+# Create ZIP file for Intent Parser Lambda function
+data "archive_file" "intent_parser_zip" {
+  type        = "zip"
+  source_file = "${path.root}/../lambda/intent_parser/handler.py"
+  output_path = "${path.module}/intent_parser.zip"
+}
+
+# Intent Parser Lambda function - Orchestrates Bedrock agent workflows
+resource "aws_lambda_function" "intent_parser" {
+  filename         = data.archive_file.intent_parser_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-intent-parser"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
   runtime         = "python3.11"
-  timeout         = 300
-  memory_size     = 512
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
+  timeout         = 300  # 5 minutes for complex orchestration
+
+  source_code_hash = data.archive_file.intent_parser_zip.output_base64sha256
+
   environment {
     variables = {
-      YOUTUBE_API_KEY           = var.youtube_api_key
-      ENRICHED_TABLE_NAME      = var.enriched_data_table_name
-      CAMPAIGN_SQS_QUEUE_URL   = var.campaign_sqs_queue_url
+      SUPERVISOR_AGENT_ID = var.supervisor_agent_id
+      SUPERVISOR_AGENT_ALIAS_ID = var.supervisor_agent_alias_id
+      CAMPAIGN_STATUS_TABLE_NAME = var.campaign_status_table_name
+      CAMPAIGN_EVENTS_BUS_NAME = var.campaign_events_bus_name
     }
   }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
-}
 
-# Lambda Function: Campaign Generator (Bedrock)
-resource "aws_lambda_function" "campaign_generator" {
-  filename         = data.archive_file.campaign_generator_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-campaign-generator"
-  role            = var.lambda_campaign_role_arn
-  handler         = "campaign_generator_lambda.lambda_handler"
-  source_code_hash = data.archive_file.campaign_generator_lambda.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 600
-  memory_size     = 1024
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
-  environment {
-    variables = {
-      DYNAMODB_TABLE     = var.enriched_data_table_name
-      BEDROCK_MODEL_ID   = var.bedrock_model_id
-    }
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Parse intents and orchestrate Bedrock agent workflows"
   }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
 }
 
-# Lambda Function: Get Status (API Gateway)
-resource "aws_lambda_function" "get_status" {
-  filename         = data.archive_file.get_status_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-get-status"
-  role            = var.lambda_api_role_arn
-  handler         = "get_status_lambda.lambda_handler"
-  source_code_hash = data.archive_file.get_status_lambda.output_base64sha256
+# Create ZIP file for Campaign Status Lambda function
+data "archive_file" "campaign_status_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/campaign_status"
+  output_path = "${path.module}/campaign_status.zip"
+}
+
+# Campaign Status Lambda function - Provides campaign status API endpoints
+resource "aws_lambda_function" "campaign_status" {
+  filename         = data.archive_file.campaign_status_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-campaign-status"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
   runtime         = "python3.11"
   timeout         = 30
-  memory_size     = 256
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
+
+  source_code_hash = data.archive_file.campaign_status_zip.output_base64sha256
+
   environment {
     variables = {
-      ANALYSIS_TABLE     = var.product_analysis_table_name
-      ENRICHED_TABLE     = var.enriched_data_table_name
+      CAMPAIGN_STATUS_TABLE_NAME = var.campaign_status_table_name
     }
   }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Provide campaign status API endpoints"
+  }
 }
 
-# Lambda Function: Comprehend Analysis (Sentiment Analysis)
-resource "aws_lambda_function" "comprehend_analysis" {
-  filename         = data.archive_file.comprehend_analysis_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-comprehend-analysis"
-  role            = var.lambda_sentiment_role_arn
-  handler         = "comprehend_analysis.lambda_handler"
-  source_code_hash = data.archive_file.comprehend_analysis_lambda.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 300
-  memory_size     = 512
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
+# ============================================================================
+# ACTION GROUP LAMBDA FUNCTIONS (not associated with Bedrock agent)
+# ============================================================================
+
+# Create ZIP file for Data Enrichment Lambda function
+data "archive_file" "data_enrichment_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/data_enrichment"
+  output_path = "${path.module}/data_enrichment.zip"
 }
 
-# Lambda Function: Action Items Generator
-resource "aws_lambda_function" "action_items_generator" {
-  filename         = data.archive_file.action_items_generator_lambda.output_path
-  function_name    = "${var.project_name}-${var.environment}-action-items-generator"
-  role            = var.lambda_sentiment_role_arn
-  handler         = "action_items_and_summary_generator.lambda_handler"
-  source_code_hash = data.archive_file.action_items_generator_lambda.output_base64sha256
+# Data Enrichment Lambda function - Enriches campaigns with YouTube data
+resource "aws_lambda_function" "data_enrichment" {
+  filename         = data.archive_file.data_enrichment_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-data-enrichment"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
   runtime         = "python3.11"
-  timeout         = 300
-  memory_size     = 1024
-  
-  layers = [aws_lambda_layer_version.shared_dependencies.arn]
-  
+  timeout         = 60
+
+  source_code_hash = data.archive_file.data_enrichment_zip.output_base64sha256
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Data enrichment action group handler"
+  }
+}
+
+# Create ZIP file for Image Analysis Lambda function
+data "archive_file" "image_analysis_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/image_analysis"
+  output_path = "${path.module}/image_analysis.zip"
+}
+
+# Image Analysis Lambda function - Analyzes product images using Rekognition
+resource "aws_lambda_function" "image_analysis" {
+  filename         = data.archive_file.image_analysis_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-image-analysis"
+  role            = var.image_analysis_role_arn != "" ? var.image_analysis_role_arn : var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
+  runtime         = "python3.11"
+  timeout         = 60
+
+  source_code_hash = data.archive_file.image_analysis_zip.output_base64sha256
+
   environment {
     variables = {
-      DYNAMODB_TABLE = var.comments_table_name
+      S3_BUCKET_NAME = var.s3_bucket_name
     }
   }
-  
-  tags = var.tags
-  
-  depends_on = [aws_lambda_layer_version.shared_dependencies]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Image analysis action group handler"
+  }
 }
 
-# S3 Event Notification for Image Analysis Lambda
-resource "aws_s3_bucket_notification" "image_upload" {
-  bucket = var.s3_bucket_name
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.analyze_image.arn
-    events             = ["s3:ObjectCreated:*"]
-    filter_prefix      = "uploads/"
-    filter_suffix      = ".jpg"
-  }
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.analyze_image.arn
-    events             = ["s3:ObjectCreated:*"]
-    filter_prefix      = "uploads/"
-    filter_suffix      = ".jpeg"
-  }
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.analyze_image.arn
-    events             = ["s3:ObjectCreated:*"]
-    filter_prefix      = "uploads/"
-    filter_suffix      = ".png"
-  }
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.analyze_image.arn
-    events             = ["s3:ObjectCreated:*"]
-    filter_prefix      = "uploads/"
-    filter_suffix      = ".jfif"
-  }
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.analyze_image.arn
-    events             = ["s3:ObjectCreated:*"]
-    filter_prefix      = "uploads/"
-    filter_suffix      = ".webp"
-  }
-
-  depends_on = [aws_lambda_permission.s3_invoke_analyze_image]
+# Create ZIP file for Cultural Intelligence Lambda function
+data "archive_file" "cultural_intelligence_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/cultural_intelligence"
+  output_path = "${path.module}/cultural_intelligence.zip"
 }
 
-# Lambda Permission for S3 to invoke the analyze image function
-resource "aws_lambda_permission" "s3_invoke_analyze_image" {
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.analyze_image.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = "arn:aws:s3:::${var.s3_bucket_name}"
+# Cultural Intelligence Lambda function - Provides cross-cultural insights
+resource "aws_lambda_function" "cultural_intelligence" {
+  filename         = data.archive_file.cultural_intelligence_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-cultural-intelligence"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
+  runtime         = "python3.11"
+  timeout         = 60
+
+  source_code_hash = data.archive_file.cultural_intelligence_zip.output_base64sha256
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Cultural intelligence action group handler"
+  }
 }
 
-# Lambda Permission for API Gateway to invoke presigned URL function
-resource "aws_lambda_permission" "api_gateway_invoke_presigned_url" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.generate_presigned_url.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*/*/*"
+# Create ZIP file for Sentiment Analysis Lambda function
+data "archive_file" "sentiment_analysis_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/sentiment_analysis"
+  output_path = "${path.module}/sentiment_analysis.zip"
 }
 
-# Lambda Permission for API Gateway to invoke get status function
-resource "aws_lambda_permission" "api_gateway_invoke_get_status" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.get_status.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*/*/*"
+# Sentiment Analysis Lambda function - Analyzes market sentiment
+resource "aws_lambda_function" "sentiment_analysis" {
+  filename         = data.archive_file.sentiment_analysis_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-sentiment-analysis"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
+  runtime         = "python3.11"
+  timeout         = 60
+
+  source_code_hash = data.archive_file.sentiment_analysis_zip.output_base64sha256
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Sentiment analysis action group handler"
+  }
 }
 
-# Data source for current AWS region
-data "aws_region" "current" {}
+# Create ZIP file for Visual Asset Generator Lambda function
+data "archive_file" "visual_asset_generator_zip" {
+  type        = "zip"
+  source_dir  = "${path.root}/../lambda/visual_asset_generator"
+  output_path = "${path.module}/visual_asset_generator.zip"
+}
 
-# Data source for current AWS account ID
-data "aws_caller_identity" "current" {}
+# Visual Asset Generator Lambda function - Generates marketing assets
+resource "aws_lambda_function" "visual_asset_generator" {
+  filename         = data.archive_file.visual_asset_generator_zip.output_path
+  function_name    = "${var.project_name}-${var.environment}-visual-asset-generator"
+  role            = var.lambda_execution_role_arn
+  handler         = "handler.lambda_handler"
+  runtime         = "python3.11"
+  timeout         = 120
+
+  source_code_hash = data.archive_file.visual_asset_generator_zip.output_base64sha256
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Purpose     = "Visual asset generator action group handler"
+  }
+}

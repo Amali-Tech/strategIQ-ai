@@ -6,75 +6,52 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Environment (dev, staging, prod)"
+  description = "Environment name (dev, staging, prod)"
   type        = string
 }
 
-# IAM Role ARNs from IAM module
-variable "lambda_image_analysis_role_arn" {
-  description = "ARN of the Lambda image analysis execution role"
-  type        = string
-}
-
-variable "lambda_campaign_role_arn" {
-  description = "ARN of the Lambda campaign execution role"
-  type        = string
-}
-
-variable "lambda_api_role_arn" {
-  description = "ARN of the Lambda API execution role"
-  type        = string
-}
-
-variable "lambda_sentiment_role_arn" {
-  description = "ARN of the Lambda sentiment analysis execution role"
-  type        = string
-}
-
-# Resource names from other modules
 variable "s3_bucket_name" {
-  description = "Name of the S3 bucket for images"
+  description = "Name of the S3 bucket for image storage"
   type        = string
 }
 
-variable "product_analysis_table_name" {
-  description = "Name of the product analysis DynamoDB table"
+variable "lambda_execution_role_arn" {
+  description = "ARN of the Lambda execution role"
   type        = string
 }
 
-variable "enriched_data_table_name" {
-  description = "Name of the enriched data DynamoDB table"
+variable "supervisor_agent_id" {
+  description = "ID of the Bedrock supervisor agent"
   type        = string
+  default     = ""  # Will be populated once Bedrock agent is created
 }
 
-variable "comments_table_name" {
-  description = "Name of the comments DynamoDB table for sentiment analysis"
+variable "supervisor_agent_alias_id" {
+  description = "Alias ID of the Bedrock supervisor agent"
   type        = string
+  default     = ""  # Will be populated once Bedrock agent alias is created
 }
 
-variable "campaign_sqs_queue_url" {
-  description = "URL of the SQS queue for campaign generation"
+variable "campaign_status_table_name" {
+  description = "Name of the campaign status DynamoDB table"
   type        = string
   default     = ""
 }
 
-
-
-# API Keys and Configuration
-variable "youtube_api_key" {
-  description = "YouTube Data API key"
+variable "campaign_events_bus_name" {
+  description = "Name of the campaign events EventBridge bus"
   type        = string
-  sensitive   = true
+  default     = ""
 }
 
-variable "bedrock_model_id" {
-  description = "Bedrock model ID for campaign generation"
+variable "visual_asset_queue_arn" {
+  description = "ARN of the visual asset generation SQS queue"
   type        = string
-  default     = "amazon.nova-pro-v1:0"
+  default     = ""
 }
 
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default     = {}
+variable "image_analysis_role_arn" {
+  description = "ARN of the dedicated IAM role for image analysis Lambda"
+  type        = string
+  default     = ""
 }

@@ -6,12 +6,18 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Environment (dev, staging, prod)"
+  description = "Environment name (dev, staging, prod)"
   type        = string
 }
 
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default     = {}
+variable "days" {
+  description = "Number of days after which objects will be deleted"
+  type        = number
+  default     = 30
+}
+
+variable "allowed_origins" {
+  description = "List of allowed origins for CORS configuration"
+  type        = list(string)
+  default     = ["*"]
 }

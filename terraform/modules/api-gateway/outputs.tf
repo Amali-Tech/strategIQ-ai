@@ -1,40 +1,31 @@
-# HTTP API Gateway Module Outputs
+# Api-gateway Module Outputs
 
 output "api_gateway_id" {
-  description = "ID of the HTTP API Gateway"
+  description = "ID of the API Gateway"
   value       = aws_apigatewayv2_api.main.id
 }
 
-output "api_gateway_execution_arn" {
-  description = "Execution ARN of the HTTP API Gateway"
-  value       = aws_apigatewayv2_api.main.execution_arn
+output "api_gateway_endpoint" {
+  description = "Endpoint URL of the API Gateway"
+  value       = aws_apigatewayv2_api.main.api_endpoint
 }
 
-output "api_gateway_invoke_url" {
-  description = "Invoke URL of the HTTP API Gateway"
-  value       = aws_apigatewayv2_stage.main.invoke_url
+output "api_gateway_url" {
+  description = "Full URL of the API Gateway with stage"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}"
 }
 
-output "api_gateway_stage_name" {
-  description = "Stage name of the HTTP API Gateway"
-  value       = aws_apigatewayv2_stage.main.name
+output "presigned_url_route" {
+  description = "Full URL for presigned URL generation endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}/api/upload/presigned-url"
 }
 
-# Specific endpoint outputs
-output "presigned_url_endpoint" {
-  description = "Full URL for the presigned URL endpoint"
-  value       = "${aws_apigatewayv2_stage.main.invoke_url}/presigned-url"
+output "upload_status_route" {
+  description = "Base URL for upload status checking endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/${aws_apigatewayv2_stage.main.name}/api/upload"
 }
 
-output "status_endpoint" {
-  description = "Full URL for the status endpoint (without imageHash parameter)"
-  value       = "${aws_apigatewayv2_stage.main.invoke_url}/status"
-}
-
-output "all_endpoints" {
-  description = "Map of all available endpoints"
-  value = {
-    presigned_url = "${aws_apigatewayv2_stage.main.invoke_url}/presigned-url"
-    status        = "${aws_apigatewayv2_stage.main.invoke_url}/status/{imageHash}"
-  }
+output "api_gateway_arn" {
+  description = "ARN of the API Gateway"
+  value       = aws_apigatewayv2_api.main.arn
 }

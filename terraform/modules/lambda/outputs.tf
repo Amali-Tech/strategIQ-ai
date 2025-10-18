@@ -1,113 +1,98 @@
 # Lambda Module Outputs
 
-# Lambda Layer
-output "lambda_layer_arn" {
-  description = "ARN of the shared Lambda layer"
-  value       = aws_lambda_layer_version.shared_dependencies.arn
+output "upload_handler_function_name" {
+  description = "Name of the upload handler Lambda function"
+  value       = aws_lambda_function.upload_handler.function_name
 }
 
-output "lambda_layer_version" {
-  description = "Version of the shared Lambda layer"
-  value       = aws_lambda_layer_version.shared_dependencies.version
+output "upload_handler_function_arn" {
+  description = "ARN of the upload handler Lambda function"
+  value       = aws_lambda_function.upload_handler.arn
 }
 
-# Individual Lambda Function ARNs
-output "analyze_image_function_arn" {
-  description = "ARN of the analyze image Lambda function"
-  value       = aws_lambda_function.analyze_image.arn
+output "upload_handler_invoke_arn" {
+  description = "Invoke ARN of the upload handler Lambda function"
+  value       = aws_lambda_function.upload_handler.invoke_arn
 }
 
-output "generate_presigned_url_function_arn" {
-  description = "ARN of the generate presigned URL Lambda function"
-  value       = aws_lambda_function.generate_presigned_url.arn
+output "intent_parser_function_name" {
+  description = "Name of the intent parser Lambda function"
+  value       = aws_lambda_function.intent_parser.function_name
 }
 
-output "enrichment_function_arn" {
-  description = "ARN of the enrichment Lambda function"
-  value       = aws_lambda_function.enrichment.arn
+output "intent_parser_function_arn" {
+  description = "ARN of the intent parser Lambda function"
+  value       = aws_lambda_function.intent_parser.arn
 }
 
-output "campaign_generator_function_arn" {
-  description = "ARN of the campaign generator Lambda function"
-  value       = aws_lambda_function.campaign_generator.arn
+output "intent_parser_invoke_arn" {
+  description = "Invoke ARN of the intent parser Lambda function"
+  value       = aws_lambda_function.intent_parser.invoke_arn
 }
 
-output "get_status_function_arn" {
-  description = "ARN of the get status Lambda function"
-  value       = aws_lambda_function.get_status.arn
+output "campaign_status_function_name" {
+  description = "Name of the campaign status Lambda function"
+  value       = aws_lambda_function.campaign_status.function_name
 }
 
-# Sentiment Analysis Lambda Function ARNs
-output "comprehend_analysis_function_arn" {
-  description = "ARN of the comprehend analysis Lambda function"
-  value       = aws_lambda_function.comprehend_analysis.arn
+output "campaign_status_function_arn" {
+  description = "ARN of the campaign status Lambda function"
+  value       = aws_lambda_function.campaign_status.arn
 }
 
-output "action_items_generator_function_arn" {
-  description = "ARN of the action items generator Lambda function"
-  value       = aws_lambda_function.action_items_generator.arn
+output "campaign_status_invoke_arn" {
+  description = "Invoke ARN of the campaign status Lambda function"
+  value       = aws_lambda_function.campaign_status.invoke_arn
 }
 
-# Individual Lambda Function Names
-output "analyze_image_function_name" {
-  description = "Name of the analyze image Lambda function"
-  value       = aws_lambda_function.analyze_image.function_name
+# Action Group Lambda Function Outputs
+
+output "data_enrichment_function_name" {
+  description = "Name of the data enrichment Lambda function (action group)"
+  value       = aws_lambda_function.data_enrichment.function_name
 }
 
-output "generate_presigned_url_function_name" {
-  description = "Name of the generate presigned URL Lambda function"
-  value       = aws_lambda_function.generate_presigned_url.function_name
+output "data_enrichment_function_arn" {
+  description = "ARN of the data enrichment Lambda function"
+  value       = aws_lambda_function.data_enrichment.arn
 }
 
-output "enrichment_function_name" {
-  description = "Name of the enrichment Lambda function"
-  value       = aws_lambda_function.enrichment.function_name
+output "image_analysis_function_name" {
+  description = "Name of the image analysis Lambda function (action group)"
+  value       = aws_lambda_function.image_analysis.function_name
 }
 
-output "campaign_generator_function_name" {
-  description = "Name of the campaign generator Lambda function"
-  value       = aws_lambda_function.campaign_generator.function_name
+output "image_analysis_function_arn" {
+  description = "ARN of the image analysis Lambda function"
+  value       = aws_lambda_function.image_analysis.arn
 }
 
-output "get_status_function_name" {
-  description = "Name of the get status Lambda function"
-  value       = aws_lambda_function.get_status.function_name
+output "cultural_intelligence_function_name" {
+  description = "Name of the cultural intelligence Lambda function (action group)"
+  value       = aws_lambda_function.cultural_intelligence.function_name
 }
 
-# Consolidated outputs for easier consumption
-output "function_arns" {
-  description = "Map of all Lambda function ARNs"
-  value = {
-    analyze_image          = aws_lambda_function.analyze_image.arn
-    generate_presigned_url = aws_lambda_function.generate_presigned_url.arn
-    enrichment            = aws_lambda_function.enrichment.arn
-    campaign_generator    = aws_lambda_function.campaign_generator.arn
-    get_status           = aws_lambda_function.get_status.arn
-  }
+output "cultural_intelligence_function_arn" {
+  description = "ARN of the cultural intelligence Lambda function"
+  value       = aws_lambda_function.cultural_intelligence.arn
 }
 
-output "function_names" {
-  description = "Map of all Lambda function names"
-  value = {
-    analyze_image          = aws_lambda_function.analyze_image.function_name
-    generate_presigned_url = aws_lambda_function.generate_presigned_url.function_name
-    enrichment            = aws_lambda_function.enrichment.function_name
-    campaign_generator    = aws_lambda_function.campaign_generator.function_name
-    get_status           = aws_lambda_function.get_status.function_name
-  }
+output "sentiment_analysis_function_name" {
+  description = "Name of the sentiment analysis Lambda function (action group)"
+  value       = aws_lambda_function.sentiment_analysis.function_name
 }
 
-# API Gateway Integration outputs
-output "api_lambda_integrations" {
-  description = "Lambda functions for API Gateway integration"
-  value = {
-    generate_presigned_url = {
-      function_name = aws_lambda_function.generate_presigned_url.function_name
-      invoke_arn   = aws_lambda_function.generate_presigned_url.invoke_arn
-    }
-    get_status = {
-      function_name = aws_lambda_function.get_status.function_name
-      invoke_arn   = aws_lambda_function.get_status.invoke_arn
-    }
-  }
+output "sentiment_analysis_function_arn" {
+  description = "ARN of the sentiment analysis Lambda function"
+  value       = aws_lambda_function.sentiment_analysis.arn
+}
+
+output "visual_asset_generator_function_name" {
+  description = "Name of the visual asset generator Lambda function (action group)"
+  value       = aws_lambda_function.visual_asset_generator.function_name
+}
+
+output "visual_asset_generator_function_arn" {
+  description = "ARN of the visual asset generator Lambda function"
+  value       = aws_lambda_function.visual_asset_generator.arn
 }

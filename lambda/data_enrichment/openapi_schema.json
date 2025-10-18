@@ -1,0 +1,275 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Data Enrichment API",
+    "description": "Enriches campaign data by searching YouTube and other sources for content related to products/brands. Provides comprehensive content analysis, trending topics, and actionable marketing insights.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/enrich-campaign-data": {
+      "post": {
+        "summary": "Enrich campaign data with external content",
+        "description": "Searches YouTube and other content sources for videos, articles, and social media posts related to a search query. Extracts metadata, engagement metrics, and generates content insights for marketing campaigns.",
+        "operationId": "enrich_campaign_data",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the product/campaign"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "User identifier for data ownership",
+                    "default": "anonymous"
+                  },
+                  "search_query": {
+                    "type": "string",
+                    "description": "Search query for content discovery (e.g., 'wireless headphones reviews')"
+                  },
+                  "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to retrieve (default: 10)",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "description": "Type of content to search for",
+                    "enum": ["all", "videos", "channels", "playlists"],
+                    "default": "all"
+                  }
+                },
+                "required": ["product_id", "user_id", "search_query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Data enrichment completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "description": "Product identifier"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "description": "User identifier"
+                        },
+                        "enrichment_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this enrichment operation"
+                        },
+                        "search_query": {
+                          "type": "string",
+                          "description": "The search query that was used"
+                        },
+                        "results_count": {
+                          "type": "integer",
+                          "description": "Number of content pieces found and processed"
+                        },
+                        "enrichment_data": {
+                          "type": "object",
+                          "description": "Structured enrichment data",
+                          "properties": {
+                            "search_query": {
+                              "type": "string",
+                              "description": "The original search query"
+                            },
+                            "total_results": {
+                              "type": "integer",
+                              "description": "Total results available from the search"
+                            },
+                            "videos": {
+                              "type": "array",
+                              "description": "YouTube video results",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "video_id": { "type": "string" },
+                                  "title": { "type": "string" },
+                                  "description": { "type": "string" },
+                                  "channel_title": { "type": "string" },
+                                  "published_at": { "type": "string" },
+                                  "thumbnail_url": { "type": "string" },
+                                  "relevance_score": { "type": "number" }
+                                }
+                              }
+                            },
+                            "channels": {
+                              "type": "array",
+                              "description": "YouTube channel results",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "channel_id": { "type": "string" },
+                                  "channel_title": { "type": "string" },
+                                  "description": { "type": "string" },
+                                  "published_at": { "type": "string" },
+                                  "thumbnail_url": { "type": "string" }
+                                }
+                              }
+                            },
+                            "trending_keywords": {
+                              "type": "array",
+                              "description": "Keywords trending in the search results",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "keyword": { "type": "string" },
+                                  "frequency": { "type": "integer" }
+                                }
+                              }
+                            },
+                            "content_themes": {
+                              "type": "array",
+                              "description": "Common themes identified in content",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "theme": { "type": "string" },
+                                  "count": { "type": "integer" }
+                                }
+                              }
+                            },
+                            "engagement_patterns": {
+                              "type": "object",
+                              "description": "Patterns in content engagement and performance",
+                              "properties": {
+                                "optimal_title_length": {
+                                  "type": "object",
+                                  "properties": {
+                                    "average": { "type": "number" },
+                                    "recommendation": { "type": "string" }
+                                  }
+                                },
+                                "popular_posting_times": {
+                                  "type": "object",
+                                  "properties": {
+                                    "pattern": { "type": "string" },
+                                    "recommendation": { "type": "string" }
+                                  }
+                                },
+                                "successful_content_formats": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "format": { "type": "string" },
+                                      "count": { "type": "integer" }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "insights": {
+                          "type": "object",
+                          "description": "Actionable insights generated from the data",
+                          "properties": {
+                            "content_opportunities": {
+                              "type": "array",
+                              "description": "Content creation opportunities",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "opportunity": { "type": "string" },
+                                  "relevance": { "type": "integer" },
+                                  "reasoning": { "type": "string" }
+                                }
+                              }
+                            },
+                            "trending_topics": {
+                              "type": "array",
+                              "description": "Trending topics identified",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "topic": { "type": "string" },
+                                  "prevalence": { "type": "integer" },
+                                  "recommendation": { "type": "string" }
+                                }
+                              }
+                            },
+                            "audience_preferences": {
+                              "type": "array",
+                              "description": "Audience preferences and behaviors",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "preference": { "type": "string" },
+                                  "detail": { "type": "string" },
+                                  "impact": { "type": "string" }
+                                }
+                              }
+                            },
+                            "competitive_landscape": {
+                              "type": "array",
+                              "description": "Competitive analysis insights",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "insight": { "type": "string" },
+                                  "recommendation": { "type": "string" },
+                                  "channels": {
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of the enrichment operation"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required parameters or enrichment failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

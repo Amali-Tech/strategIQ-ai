@@ -1,1 +1,15 @@
-{"input": "Test cultural analysis for a marketing campaign about tech products in Japan", "locale": "ja-JP"}
+{
+  "actionGroup": "image-analysis",
+  "function": "analyze_product_image", 
+  "parameters": {
+    "product_info": {
+      "name": "Test Water Bottle",
+      "description": "Smart water bottle for testing",
+      "category": "Health & Wellness"
+    },
+    "s3_info": {
+      "bucket": "degenerals-mi-dev-images",
+      "key": "test-image.jpg"
+    }
+  }
+}

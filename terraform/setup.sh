@@ -251,8 +251,7 @@ create_modules_structure(){
         "s3"
         "dynamodb" 
         "lambda"
-        "sqs"
-        "eventbridge"
+        "agents"
         "api-gateway"
         "iam"
     )
@@ -323,7 +322,7 @@ main() {
     # generate_tfvars
     # generate_providers_tf
     # generate_variables_tf
-    # create_modules_structure
+    create_modules_structure
     validate_setup
     show_next_steps
 }

@@ -1,43 +1,76 @@
-# Root Variables
-
 variable "aws_region" {
-  description = "AWS region"
+  description = "AWS region where resources will be deployed"
   type        = string
   default     = "eu-west-1"
+  
+  validation {
+    condition = can(regex("^[a-z0-9-]+$", var.aws_region))
+    error_message = "AWS region must be a valid region identifier."
+  }
 }
 
-variable "aws_profile" {
-  description = "AWS profile to use"
+variable "environment" {
+  description = "Environment name (dev, staging, prod)"
   type        = string
-  default     = "sandbox-034"
+  default     = "dev"
+  
+  validation {
+    condition = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be one of: dev, staging, prod."
+  }
 }
 
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "aws-ai-hackathon"
+  default     = "lokalize-agent"
+  
+  validation {
+    condition = can(regex("^[a-z0-9-]+$", var.project_name))
+    error_message = "Project name must contain only lowercase letters, numbers, and hyphens."
+  }
 }
 
-variable "environment" {
-  description = "Environment (dev, staging, prod)"
+variable "aws_profile" {
+  description = "aws profile"
   type        = string
-  default     = "dev"
 }
 
 variable "youtube_api_key" {
-  description = "YouTube Data API key for video enrichment"
+  description = "youtube api key"
   type        = string
-  sensitive   = true
+}
+
+variable "bedrock_agent_inference_profile_arn" {
+  description = "Bedrock model inference profile arn to use for agent"
+  type        = string
 }
 
 variable "bedrock_model_id" {
-  description = "Bedrock model ID for campaign generation"
+  description = "value"
   type        = string
-  default     = "amazon.nova-pro-v1:0"
 }
 
-variable "knowledge_base_id" {
-  description = "Bedrock Knowledge Base ID for cultural intelligence"
-  type        = string
-  default     = "KBRI4XYAXE"  # Empty string means no knowledge base
+variable "s3_allowed_origins" {
+  description = "List of allowed origins for S3 CORS configuration"
+  type        = list(string)
+  default     = ["*"]
 }
+
+variable "supervisor_agent_alias_id_override" {
+  description = "Override for supervisor agent alias ID (leave empty to use terraform-managed alias)"
+  type        = string
+  default     = ""
+}
+
+variable "cultural_intelligence_kb_id" {
+  description = "Knowledge Base ID for cultural intelligence"
+  type        = string
+  default     = ""
+}
+
+variable "aws_account_id" {
+  description = "AWS account ID"
+  type        = string
+}
+

@@ -1,4 +1,4 @@
-# API Gateway Module Variables
+# Api-gateway Module Variables
 
 variable "project_name" {
   description = "Name of the project"
@@ -6,22 +6,51 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Environment (dev, staging, prod)"
+  description = "Environment name (dev, staging, prod)"
   type        = string
 }
 
-variable "generate_presigned_url_lambda_invoke_arn" {
-  description = "Invoke ARN of the generate presigned URL Lambda function"
+variable "s3_bucket_name" {
+  description = "Name of the S3 bucket for image storage"
   type        = string
 }
 
-variable "get_status_lambda_invoke_arn" {
-  description = "Invoke ARN of the get status Lambda function"
+variable "cors_allowed_origins" {
+  description = "List of allowed origins for CORS"
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "upload_handler_invoke_arn" {
+  description = "Invoke ARN of the upload handler Lambda function"
   type        = string
 }
 
-variable "tags" {
-  description = "A map of tags to assign to the resources"
-  type        = map(string)
-  default     = {}
+variable "upload_handler_function_name" {
+  description = "Name of the upload handler Lambda function"
+  type        = string
+}
+
+variable "intent_parser_invoke_arn" {
+  description = "Invoke ARN of the intent parser Lambda function"
+  type        = string
+  default     = ""  # Optional until intent parser is deployed
+}
+
+variable "intent_parser_function_name" {
+  description = "Name of the intent parser Lambda function"
+  type        = string
+  default     = ""  # Optional until intent parser is deployed
+}
+
+variable "campaign_status_invoke_arn" {
+  description = "Invoke ARN of the campaign status Lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "campaign_status_function_name" {
+  description = "Name of the campaign status Lambda function"
+  type        = string
+  default     = ""
 }

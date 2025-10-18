@@ -1,0 +1,233 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Image Analysis API",
+    "description": "Analyzes product images using Amazon Rekognition to detect labels, objects, and generate campaign recommendations. Results are stored in DynamoDB for campaign tracking.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/analyze-product-image": {
+      "post": {
+        "summary": "Analyze product image for campaign insights",
+        "description": "Uses Amazon Rekognition to analyze product images, detect labels and objects, and generate marketing campaign recommendations. The analysis results are stored in DynamoDB for future reference.",
+        "operationId": "analyze_product_image",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product_info": {
+                    "type": "object",
+                    "description": "Product information",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Product name"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Product description"
+                      },
+                      "category": {
+                        "type": "string",
+                        "description": "Product category"
+                      }
+                    },
+                    "required": ["name"]
+                  },
+                  "s3_info": {
+                    "type": "object",
+                    "description": "S3 location of the image to analyze",
+                    "properties": {
+                      "bucket": {
+                        "type": "string",
+                        "description": "S3 bucket name"
+                      },
+                      "key": {
+                        "type": "string",
+                        "description": "S3 object key"
+                      }
+                    },
+                    "required": ["bucket", "key"]
+                  }
+                },
+                "required": ["product_info", "s3_info"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "description": "Unique identifier for the analyzed product"
+                        },
+                        "product_name": {
+                          "type": "string",
+                          "description": "Name of the analyzed product"
+                        },
+                        "detected_labels": {
+                          "type": "array",
+                          "description": "Top 10 detected labels from Rekognition",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "Label name"
+                              },
+                              "confidence": {
+                                "type": "number",
+                                "description": "Confidence score (0-100)"
+                              },
+                              "categories": {
+                                "type": "array",
+                                "description": "Label categories",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "instances": {
+                                "type": "integer",
+                                "description": "Number of instances detected"
+                              }
+                            }
+                          }
+                        },
+                        "confidence_summary": {
+                          "type": "object",
+                          "description": "Summary of detection confidence",
+                          "properties": {
+                            "high_confidence_labels": {
+                              "type": "array",
+                              "description": "Labels with confidence >= 80%",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "confidence": {
+                                    "type": "number"
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "instances": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "total_labels_detected": {
+                              "type": "integer",
+                              "description": "Total number of labels detected"
+                            }
+                          }
+                        },
+                        "analysis_timestamp": {
+                          "type": "string",
+                          "description": "Timestamp when analysis was performed"
+                        },
+                        "storage_location": {
+                          "type": "string",
+                          "description": "DynamoDB storage location"
+                        },
+                        "recommendations": {
+                          "type": "object",
+                          "description": "Campaign recommendations based on image analysis",
+                          "properties": {
+                            "primary_visual_elements": {
+                              "type": "array",
+                              "description": "Key visual elements detected",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "suggested_hashtags": {
+                              "type": "array",
+                              "description": "Recommended hashtags for social media",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "content_themes": {
+                              "type": "array",
+                              "description": "Content themes identified",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "platform_suitability": {
+                              "type": "object",
+                              "description": "Platform suitability assessment",
+                              "properties": {
+                                "Instagram": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"]
+                                },
+                                "TikTok": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"]
+                                },
+                                "LinkedIn": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"]
+                                },
+                                "Facebook": {
+                                  "type": "string",
+                                  "enum": ["High", "Medium", "Low"]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required parameters, invalid image, or analysis failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

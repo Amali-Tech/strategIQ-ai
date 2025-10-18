@@ -1,131 +1,71 @@
-# Main Terraform Configuration for AWS AI Hackathon
+# Main Terraform configuration
+# Deploys Lambda action groups + utilities, IAM roles, S3 bucket, and API Gateway
 
-# IAM Module - Must be first as other modules depend on roles
-module "iam" {
-  source = "./modules/iam"
-  
-  project_name          = var.project_name
-  environment          = var.environment
-  s3_bucket_arn        = module.s3.bucket_arn
-  dynamodb_table_arns  = module.dynamodb.table_arns
-  dynamodb_stream_arns = module.dynamodb.stream_arns
-  sqs_queue_arns       = module.sqs.queue_arns
-  
-  tags = local.common_tags
-}
-
-# S3 Module
+# S3 Module for image storage
 module "s3" {
   source = "./modules/s3"
-  
-  project_name = var.project_name
-  environment  = var.environment
-  
-  tags = local.common_tags
+
+  project_name    = var.project_name
+  environment     = var.environment
+  days            = 30 # Default to 30 days for lifecycle
+  allowed_origins = var.s3_allowed_origins
 }
 
-# DynamoDB Module
-module "dynamodb" {
-  source = "./modules/dynamodb"
-  
-  project_name = var.project_name
-  environment  = var.environment
-  
-  tags = local.common_tags
+# IAM Module for Lambda execution roles and policies
+module "iam" {
+  source = "./modules/iam"
+
+  project_name    = var.project_name
+  environment     = var.environment
+  s3_bucket_arn  = module.s3.bucket_arn
+  aws_account_id = var.aws_account_id
+  aws_region     = var.aws_region
 }
 
-# SQS Module
-module "sqs" {
-  source = "./modules/sqs"
-  
-  project_name = var.project_name
-  environment  = var.environment
-  
-  tags = local.common_tags
-}
-
-# Lambda Module
+# Lambda Module - Deploys all action group handlers + utility functions
 module "lambda" {
   source = "./modules/lambda"
-  
-  project_name                     = var.project_name
-  environment                     = var.environment
-  lambda_image_analysis_role_arn  = module.iam.lambda_image_analysis_role_arn
-  lambda_campaign_role_arn        = module.iam.lambda_campaign_role_arn
-  lambda_api_role_arn             = module.iam.lambda_api_role_arn
-  lambda_sentiment_role_arn       = module.iam.lambda_sentiment_role_arn
-  s3_bucket_name                  = module.s3.bucket_name
-  product_analysis_table_name     = module.dynamodb.product_analysis_table_name
-  enriched_data_table_name        = module.dynamodb.enriched_data_table_name
-  comments_table_name             = module.dynamodb.comments_table_name
-  campaign_sqs_queue_url          = module.sqs.campaign_generation_queue_url
-  youtube_api_key                 = var.youtube_api_key
-  bedrock_model_id                = var.bedrock_model_id
-  
-  tags = local.common_tags
-  
-  depends_on = [module.iam, module.s3, module.dynamodb, module.sqs]
+
+  project_name               = var.project_name
+  environment                = var.environment
+  s3_bucket_name            = module.s3.bucket_name
+  lambda_execution_role_arn = module.iam.lambda_execution_role_arn
+  image_analysis_role_arn   = module.image_analysis.lambda_role_arn
+  supervisor_agent_id       = "PLACEHOLDER_AGENT_ID"
+  supervisor_agent_alias_id = "PLACEHOLDER_ALIAS_ID"
+  campaign_status_table_name = ""
+  campaign_events_bus_name   = ""
+  visual_asset_queue_arn     = ""
+
+  depends_on = [module.iam, module.image_analysis]
 }
 
-# API Gateway Module
+# API Gateway Module for upload and campaign endpoints
 module "api_gateway" {
   source = "./modules/api-gateway"
-  
-  project_name                           = var.project_name
-  environment                           = var.environment
-  generate_presigned_url_lambda_invoke_arn = module.lambda.api_lambda_integrations.generate_presigned_url.invoke_arn
-  get_status_lambda_invoke_arn          = module.lambda.api_lambda_integrations.get_status.invoke_arn
-  
-  tags = local.common_tags
-  
+
+  project_name                   = var.project_name
+  environment                    = var.environment
+  s3_bucket_name                = module.s3.bucket_name
+  cors_allowed_origins          = var.s3_allowed_origins
+  upload_handler_invoke_arn     = module.lambda.upload_handler_invoke_arn
+  upload_handler_function_name  = module.lambda.upload_handler_function_name
+  intent_parser_invoke_arn      = module.lambda.intent_parser_invoke_arn
+  intent_parser_function_name   = module.lambda.intent_parser_function_name
+  campaign_status_invoke_arn    = module.lambda.campaign_status_invoke_arn
+  campaign_status_function_name = module.lambda.campaign_status_function_name
+
   depends_on = [module.lambda]
 }
 
-# EventBridge Module
-module "eventbridge" {
-  source = "./modules/eventbridge"
-  
-  project_name                    = var.project_name
-  environment                    = var.environment
-  eventbridge_pipes_role_arn     = module.iam.eventbridge_pipes_role_arn
-  product_analysis_stream_arn    = module.dynamodb.product_analysis_stream_arn
-  enriched_data_stream_arn       = module.dynamodb.enriched_data_stream_arn
-  campaign_data_stream_arn       = module.dynamodb.campaign_data_stream_arn
-  enrichment_lambda_arn          = module.lambda.enrichment_function_arn
-  campaign_generator_lambda_arn  = module.lambda.campaign_generator_function_arn
-  campaign_generator_lambda_name = module.lambda.campaign_generator_function_name
-  campaign_sqs_queue_arn         = module.sqs.campaign_generation_queue_arn
-  
-  tags = local.common_tags
-  
-  depends_on = [module.iam, module.dynamodb, module.lambda, module.sqs]
+# Image Analysis Module - Dedicated IAM role and DynamoDB for image analysis
+module "image_analysis" {
+  source = "./modules/image_analysis"
+
+  project_name    = var.project_name
+  environment     = var.environment
+  s3_bucket_name = module.s3.bucket_name
+
+  depends_on = [module.s3]
 }
 
-# Lokalize Agent Module
-module "lokalize_agent" {
-  source = "./modules/lokalize-agent"
-  
-  project_name                = var.project_name
-  environment                = var.environment
-  knowledge_base_id          = var.knowledge_base_id
-  agent_name                 = "Lokalize-Marketing-Agent"
-  schemas_bucket_name        = "lokalize-schemas-${data.aws_caller_identity.current.account_id}"
-  lambda_execution_role_arn  = module.iam.lambda_lokalize_role_arn
-  
-  tags = local.common_tags
-  
-  depends_on = [module.iam]
-}
-
-# Data sources
-data "aws_caller_identity" "current" {}
-
-# Local values for common tags
-locals {
-  common_tags = {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-    Repository  = "degenerals-infra"
-  }
-}

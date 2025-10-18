@@ -1,0 +1,210 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Lokalize Agent - Cultural Adaptation API",
+    "version": "1.0.0",
+    "description": "API for adapting marketing content to different cultural contexts and local markets"
+  },
+  "paths": {
+    "/adapt-content-culturally": {
+      "post": {
+        "summary": "Adapt content for specific cultural context",
+        "description": "Analyzes and adapts marketing content to align with cultural norms, values, and communication styles of target markets",
+        "operationId": "adapt_content_culturally",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "Original marketing text content"
+                      },
+                      "images": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "URLs or paths to associated images"
+                      },
+                      "videos": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "URLs or paths to associated videos"
+                      }
+                    },
+                    "required": ["text"]
+                  },
+                  "target_culture": {
+                    "type": "string",
+                    "description": "Target culture/country code (e.g., 'japanese', 'german', 'brazilian')"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "advertisement",
+                      "social_media",
+                      "email",
+                      "website",
+                      "brochure"
+                    ],
+                    "description": "Type of marketing content"
+                  },
+                  "adaptation_level": {
+                    "type": "string",
+                    "enum": ["light", "moderate", "deep"],
+                    "description": "Level of cultural adaptation required"
+                  },
+                  "brand_guidelines": {
+                    "type": "object",
+                    "properties": {
+                      "tone": {
+                        "type": "string",
+                        "description": "Brand tone guidelines"
+                      },
+                      "values": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Core brand values"
+                      },
+                      "restrictions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Content restrictions or taboos"
+                      }
+                    }
+                  }
+                },
+                "required": ["content", "target_culture", "content_type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Content adapted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success", "error"]
+                    },
+                    "adaptation_results": {
+                      "type": "object",
+                      "properties": {
+                        "original_content": {
+                          "type": "string",
+                          "description": "Original content for reference"
+                        },
+                        "target_culture": {
+                          "type": "string",
+                          "description": "Target culture identifier"
+                        },
+                        "adapted_content": {
+                          "type": "object",
+                          "properties": {
+                            "text": {
+                              "type": "string",
+                              "description": "Culturally adapted text"
+                            },
+                            "tone": {
+                              "type": "string",
+                              "description": "Adapted tone style"
+                            },
+                            "cultural_elements": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Cultural elements incorporated"
+                            }
+                          }
+                        },
+                        "cultural_considerations": {
+                          "type": "object",
+                          "properties": {
+                            "color_symbolism": {
+                              "type": "object",
+                              "properties": {
+                                "avoid": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "prefer": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "communication_style": {
+                              "type": "string",
+                              "description": "Preferred communication style"
+                            },
+                            "hierarchy_awareness": {
+                              "type": "string",
+                              "description": "Importance of hierarchy in culture"
+                            }
+                          }
+                        },
+                        "localization_notes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Additional localization recommendations"
+                        },
+                        "risk_assessment": {
+                          "type": "object",
+                          "properties": {
+                            "cultural_sensitivity_score": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Cultural sensitivity score (0-1)"
+                            },
+                            "potential_issues": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Identified potential cultural issues"
+                            },
+                            "recommendations": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Risk mitigation recommendations"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

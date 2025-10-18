@@ -1,4 +1,4 @@
-# IAM Module Variables
+# Iam Module Variables
 
 variable "project_name" {
   description = "Name of the project"
@@ -6,38 +6,21 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Environment (dev, staging, prod)"
+  description = "Environment name (dev, staging, prod)"
   type        = string
 }
 
 variable "s3_bucket_arn" {
-  description = "ARN of the S3 bucket"
+  description = "ARN of the S3 bucket for Lambda permissions"
   type        = string
 }
 
-variable "dynamodb_table_arns" {
-  description = "List of DynamoDB table ARNs"
-  type        = list(string)
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
 }
 
-variable "dynamodb_stream_arns" {
-  description = "List of DynamoDB stream ARNs"
-  type        = list(string)
-}
-
-variable "sqs_queue_arns" {
-  description = "List of SQS queue ARNs"
-  type        = list(string)
-}
-
-variable "lambda_function_arns" {
-  description = "List of Lambda function ARNs"
-  type        = list(string)
-  default     = ["*"]
-}
-
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default     = {}
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
 }

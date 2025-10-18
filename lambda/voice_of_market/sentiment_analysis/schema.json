@@ -1,0 +1,298 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Voice of the Market Agent - Sentiment Analysis API",
+    "version": "1.0.0",
+    "description": "API for analyzing market sentiment across various channels and sources"
+  },
+  "paths": {
+    "/analyze-market-sentiment": {
+      "post": {
+        "summary": "Analyze market sentiment across multiple channels",
+        "description": "Analyzes sentiment from social media, news, reviews, and other sources to provide comprehensive market sentiment insights",
+        "operationId": "analyze_market_sentiment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "analysis_parameters": {
+                    "type": "object",
+                    "properties": {
+                      "brand_keywords": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Brand names and keywords to monitor"
+                      },
+                      "competitor_keywords": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Competitor brands to compare against"
+                      },
+                      "product_keywords": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Product or service related keywords"
+                      },
+                      "time_range": {
+                        "type": "string",
+                        "enum": ["24h", "7d", "30d", "90d", "1y"],
+                        "description": "Time range for sentiment analysis"
+                      },
+                      "geographic_scope": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Geographic regions to analyze"
+                      }
+                    },
+                    "required": ["brand_keywords", "time_range"]
+                  },
+                  "data_sources": {
+                    "type": "object",
+                    "properties": {
+                      "social_media": {
+                        "type": "object",
+                        "properties": {
+                          "platforms": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "twitter",
+                                "facebook",
+                                "instagram",
+                                "linkedin",
+                                "tiktok",
+                                "youtube",
+                                "reddit"
+                              ]
+                            },
+                            "description": "Social media platforms to analyze"
+                          },
+                          "include_comments": {
+                            "type": "boolean",
+                            "description": "Whether to include comments in analysis"
+                          },
+                          "min_engagement": {
+                            "type": "integer",
+                            "description": "Minimum engagement threshold"
+                          }
+                        }
+                      },
+                      "news_media": {
+                        "type": "object",
+                        "properties": {
+                          "include_blogs": {
+                            "type": "boolean",
+                            "description": "Whether to include blog posts"
+                          },
+                          "source_credibility": {
+                            "type": "string",
+                            "enum": [
+                              "all",
+                              "high_credibility",
+                              "mainstream_only"
+                            ],
+                            "description": "Source credibility filter"
+                          }
+                        }
+                      },
+                      "review_sites": {
+                        "type": "object",
+                        "properties": {
+                          "platforms": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "google",
+                                "yelp",
+                                "trustpilot",
+                                "glassdoor",
+                                "app_stores"
+                              ]
+                            },
+                            "description": "Review platforms to analyze"
+                          },
+                          "min_rating_count": {
+                            "type": "integer",
+                            "description": "Minimum number of ratings required"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "analysis_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_competitive_analysis": {
+                        "type": "boolean",
+                        "description": "Whether to include competitive sentiment comparison"
+                      },
+                      "demographic_breakdown": {
+                        "type": "boolean",
+                        "description": "Whether to provide demographic sentiment breakdown"
+                      },
+                      "temporal_analysis": {
+                        "type": "boolean",
+                        "description": "Whether to provide temporal sentiment trends"
+                      },
+                      "topic_modeling": {
+                        "type": "boolean",
+                        "description": "Whether to identify key topics and themes"
+                      },
+                      "risk_assessment": {
+                        "type": "boolean",
+                        "description": "Whether to include risk indicators"
+                      }
+                    }
+                  }
+                },
+                "required": ["analysis_parameters"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sentiment analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success", "error"]
+                    },
+                    "sentiment_analysis": {
+                      "type": "object",
+                      "properties": {
+                        "overall_sentiment": {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "type": "number",
+                              "minimum": -1,
+                              "maximum": 1,
+                              "description": "Overall sentiment score (-1 to 1)"
+                            },
+                            "classification": {
+                              "type": "string",
+                              "enum": [
+                                "very_negative",
+                                "negative",
+                                "neutral",
+                                "positive",
+                                "very_positive"
+                              ],
+                              "description": "Sentiment classification"
+                            },
+                            "confidence": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Confidence in sentiment analysis"
+                            },
+                            "trend": {
+                              "type": "string",
+                              "enum": ["declining", "stable", "improving"],
+                              "description": "Sentiment trend direction"
+                            }
+                          }
+                        },
+                        "sentiment_breakdown": {
+                          "type": "object",
+                          "properties": {
+                            "positive": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Percentage of positive sentiment"
+                            },
+                            "neutral": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Percentage of neutral sentiment"
+                            },
+                            "negative": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "Percentage of negative sentiment"
+                            }
+                          }
+                        },
+                        "source_analysis": {
+                          "type": "object",
+                          "description": "Sentiment analysis by source type"
+                        },
+                        "temporal_analysis": {
+                          "type": "object",
+                          "description": "Sentiment trends over time"
+                        },
+                        "demographic_insights": {
+                          "type": "object",
+                          "description": "Sentiment breakdown by demographics"
+                        },
+                        "competitive_sentiment": {
+                          "type": "object",
+                          "description": "Sentiment comparison with competitors"
+                        },
+                        "actionable_insights": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Actionable insights from sentiment analysis"
+                        },
+                        "risk_indicators": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "description": "Type of risk identified"
+                              },
+                              "severity": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"],
+                                "description": "Risk severity level"
+                              },
+                              "trend": {
+                                "type": "string",
+                                "enum": ["improving", "stable", "worsening"],
+                                "description": "Risk trend direction"
+                              },
+                              "recommendation": {
+                                "type": "string",
+                                "description": "Recommended action"
+                              }
+                            }
+                          },
+                          "description": "Identified risk indicators"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
