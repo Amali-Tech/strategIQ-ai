@@ -72,7 +72,8 @@ resource "aws_iam_policy" "bedrock_agent_model_policy" {
         ]
         Resource = [
           "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_model_id}",
-          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
         ]
       },
       {
@@ -84,7 +85,7 @@ resource "aws_iam_policy" "bedrock_agent_model_policy" {
           "bedrock:ListInferenceProfiles"
         ]
         Resource = [
-          "arn:aws:bedrock:${var.aws_region}:584102815888:inference-profile/eu.amazon.nova-pro-v1:0"
+          "${var.bedrock_agent_inference_profile_arn}"
         ]
       }
     ]
@@ -143,272 +144,520 @@ resource "aws_iam_role_policy_attachment" "bedrock_agent_kb_policy" {
 
 # Supervisor Bedrock Agent
 resource "aws_bedrockagent_agent" "supervisor" {
-  agent_name                  = "${var.project_name}-${var.environment}-supervisor"
+  agent_name                  = "${var.project_name}-${var.environment}-supervisor-claude"
   agent_resource_role_arn     = aws_iam_role.bedrock_agent_role.arn
   description                 = "AI supervisor agent for orchestrating multi-tier marketing campaign generation"
   foundation_model           = var.bedrock_model_id
   idle_session_ttl_in_seconds = 3600
 
   instruction = <<-EOT
-You are an AI Marketing Campaign Supervisor responsible for orchestrating comprehensive marketing campaigns using specialized action groups and agents.
+You are a Marketing Campaign AI Agent with access to these action groups:
 
-## Available Resources:
-### Action Groups:
-1. **image-analysis**: Analyzes product images using Amazon Rekognition - call with /analyze-product-image endpoint
-2. **data-enrichment**: Enriches campaign data using YouTube API - call with /enrich-campaign-data endpoint
-3. **cultural-intelligence**: Provides cross-cultural adaptation and market intelligence - call with /cultural-insights endpoint
+1. **data-enrichment** - Call with /enrich-campaign-data endpoint
+2. **image-analysis** - Call with /analyze-product-image endpoint  
+3. **cultural-intelligence** - Call with /cultural-insights endpoint
+4. **sentiment-analysis** - Call with /analyze-sentiment endpoint
 
-NOTE: Visual asset generation happens asynchronously after campaign completion via event-driven architecture.
+## MANDATORY WORKFLOW:
 
-${var.cultural_intelligence_kb_id != "" ? "### Knowledge Base:\n- **Cultural Intelligence Knowledge Base** (ID: ${var.cultural_intelligence_kb_id}): Contains cross-cultural guidelines, market intelligence, and cultural adaptation insights for global markets. You can query this knowledge base directly for cultural insights and market-specific information." : ""}
-
-## Enhanced Campaign Generation Workflow:
-
-### ROUTE: /campaign (Simple Campaign)
-For basic campaigns, follow this workflow:
-1. **Image Analysis** (when s3_info provided): Call image-analysis action group
-2. **Data Enrichment**: Call data-enrichment with search query from image analysis
-3. **Campaign Generation**: Create campaign strategy based on image + data insights
-4. **Return Campaign**: Provide complete campaign WITHOUT visual assets
-
-### ROUTE: /comprehensive-campaign (Full Campaign with Async Assets)  
-For comprehensive campaigns, follow this extended workflow:
-1. **Image Analysis** (when s3_info provided): Call image-analysis action group
-2. **Data Enrichment**: Call data-enrichment with search query from image analysis  
-3. **Cultural Intelligence**: Call cultural-intelligence for global market insights
-4. **Campaign Generation**: Create enhanced campaign strategy with cultural adaptations
-5. **Asset Placeholder**: Include placeholder asset references for async generation
-6. **Return Campaign**: Provide complete campaign with asset placeholders
-
-### ACTION GROUP USAGE:
-
-#### STEP 1: Image Analysis (when s3_info provided)
-Call the image-analysis action group with:
+### STEP 1: Call data-enrichment action group FIRST
+You MUST call the data-enrichment action group using this exact payload:
 ```json
 {
-  "product_info": {
-    "name": "Product Name",
-    "description": "Product Description", 
-    "category": "Product Category"
-  },
-  "s3_info": {
-    "bucket": "bucket-name",
-    "key": "path/to/image.jpg"
-  }
-}
-```
-
-#### STEP 2: Data Enrichment
-After image analysis, build a search query from the results and call data-enrichment:
-```json
-{
-  "search_query": "constructed search query from image analysis results",
-  "max_results": 10,
+  "search_query": "[product name] [product category] review tutorial",
+  "max_results": 15,
   "content_type": "videos"
 }
 ```
 
-#### STEP 3: Cultural Intelligence (ONLY for /comprehensive-campaign route)
-After data enrichment, get cultural adaptation insights for target markets:
-```json
+### STEP 2: Extract video IDs from response
+The data-enrichment response contains a "video_data" array with "video_id" fields. Extract ALL video_id values.
+
+### STEP 3: Return ONLY JSON conforming to this schema
+Return ONLY JSON that conforms to the following schema with proper data types and validation:
+
 {
-  "target_markets": ["China", "Japan", "Germany"],
-  "campaign_type": "social_media",
-  "product_category": "extracted from image analysis"
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["product", "content_ideas", "campaigns", "generated_assets", "platform_content", "market_trends", "success_metrics", "analytics", "related_youtube_videos"],
+  "properties": {
+    "product": {
+      "type": "object",
+      "required": ["description", "image"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 500,
+          "description": "Product name and description"
+        },
+        "image": {
+          "type": "object",
+          "required": ["labels"],
+          "properties": {
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "confidence": { "type": "number", "minimum": 0, "maximum": 100 }
+                }
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          }
+        }
+      }
+    },
+    "content_ideas": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["platform", "topic", "engagement_score", "caption", "hashtags"],
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["Instagram", "TikTok", "YouTube", "LinkedIn", "Twitter", "Facebook"]
+          },
+          "topic": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 200
+          },
+          "engagement_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "caption": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 500
+          },
+          "hashtags": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "pattern": "^#[a-zA-Z0-9_]{1,30}$"
+            }
+          }
+        }
+      }
+    },
+    "campaigns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["name", "duration", "posts_per_week", "platforms", "calendar", "adaptations"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 100
+          },
+          "duration": {
+            "type": "string",
+            "pattern": "^\\d+\\s+(weeks?|days?|months?)$"
+          },
+          "posts_per_week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 14
+          },
+          "platforms": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "enum": ["Instagram", "TikTok", "YouTube", "LinkedIn", "Twitter", "Facebook", "Pinterest"]
+            }
+          },
+          "calendar": {
+            "type": "object",
+            "minProperties": 2,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200
+            }
+          },
+          "adaptations": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 300
+            }
+          }
+        }
+      }
+    },
+    "generated_assets": {
+      "type": "object",
+      "required": ["image_prompts", "video_scripts", "email_templates", "blog_outlines"],
+      "properties": {
+        "image_prompts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 300
+          }
+        },
+        "video_scripts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["type", "content"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Short form video", "Long form video", "Explainer video", "Tutorial video"]
+              },
+              "content": {
+                "type": "string",
+                "minLength": 50,
+                "maxLength": 2000
+              }
+            }
+          }
+        },
+        "email_templates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["subject", "body"],
+            "properties": {
+              "subject": {
+                "type": "string",
+                "minLength": 10,
+                "maxLength": 100
+              },
+              "body": {
+                "type": "string",
+                "minLength": 50,
+                "maxLength": 1000
+              }
+            }
+          }
+        },
+        "blog_outlines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["title", "points"],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 10,
+                "maxLength": 150
+              },
+              "points": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "minLength": 10,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "platform_content": {
+      "type": "object",
+      "required": ["instagram", "tiktok", "youtube"],
+      "properties": {
+        "instagram": {
+          "type": "object",
+          "required": ["content_themes", "recommended_formats", "sample_post", "hashtags", "posting_schedule"],
+          "properties": {
+            "content_themes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string" }
+            },
+            "recommended_formats": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "enum": ["photo", "reel", "carousel", "story", "igtv"]
+              }
+            },
+            "sample_post": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 2200
+            },
+            "hashtags": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 30,
+              "items": {
+                "type": "string",
+                "pattern": "^#[a-zA-Z0-9_]{1,30}$"
+              }
+            },
+            "posting_schedule": {
+              "type": "string",
+              "minLength": 5,
+              "maxLength": 100
+            }
+          }
+        },
+        "tiktok": {
+          "type": "object",
+          "required": ["content_themes", "recommended_formats", "sample_post", "hashtags", "trending_sounds"],
+          "properties": {
+            "content_themes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string" }
+            },
+            "recommended_formats": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "enum": ["short_video", "tutorial", "challenge", "duet", "stitch"]
+              }
+            },
+            "sample_post": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 500
+            },
+            "hashtags": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 30,
+              "items": {
+                "type": "string",
+                "pattern": "^#[a-zA-Z0-9_]{1,30}$"
+              }
+            },
+            "trending_sounds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "youtube": {
+          "type": "object",
+          "required": ["content_themes", "recommended_formats", "sample_post", "video_ideas", "seo_keywords"],
+          "properties": {
+            "content_themes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string" }
+            },
+            "recommended_formats": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "enum": ["long_form", "shorts", "live", "premiere"]
+              }
+            },
+            "sample_post": {
+              "type": "string",
+              "minLength": 50,
+              "maxLength": 500
+            },
+            "video_ideas": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 10,
+              "items": { "type": "string" }
+            },
+            "seo_keywords": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 50
+              }
+            }
+          }
+        }
+      }
+    },
+    "market_trends": {
+      "type": "object",
+      "required": ["trending_keywords", "competitor_insights", "market_opportunities", "seasonal_trends"],
+      "properties": {
+        "trending_keywords": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 20,
+          "items": { "type": "string" }
+        },
+        "competitor_insights": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": { "type": "string" }
+        },
+        "market_opportunities": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": { "type": "string" }
+        },
+        "seasonal_trends": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "success_metrics": {
+      "type": "object",
+      "required": ["engagement_targets", "reach_goals", "conversion_metrics"],
+      "properties": {
+        "engagement_targets": {
+          "type": "object",
+          "required": ["likes", "comments", "shares"],
+          "properties": {
+            "likes": {
+              "type": "string",
+              "pattern": "^\\d+(-\\d+)?%?$"
+            },
+            "comments": {
+              "type": "string",
+              "pattern": "^\\d+(-\\d+)?%?$"
+            },
+            "shares": {
+              "type": "string",
+              "pattern": "^\\d+(-\\d+)?%?$"
+            }
+          }
+        },
+        "reach_goals": {
+          "type": "object",
+          "required": ["impressions", "unique_users"],
+          "properties": {
+            "impressions": {
+              "type": "string",
+              "pattern": "^\\d+[K|M]?\\+?$"
+            },
+            "unique_users": {
+              "type": "string",
+              "pattern": "^\\d+[K|M]?\\+?$"
+            }
+          }
+        },
+        "conversion_metrics": {
+          "type": "object",
+          "required": ["click_through_rate", "conversion_rate"],
+          "properties": {
+            "click_through_rate": {
+              "type": "string",
+              "pattern": "^\\d+(-\\d+)?%$"
+            },
+            "conversion_rate": {
+              "type": "string",
+              "pattern": "^\\d+(-\\d+)?%$"
+            }
+          }
+        }
+      }
+    },
+    "analytics": {
+      "type": "object",
+      "required": ["estimatedReach", "projectedEngagement", "conversionRate", "roi"],
+      "properties": {
+        "estimatedReach": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 10000000
+        },
+        "projectedEngagement": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        "conversionRate": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 50
+        },
+        "roi": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 100
+        }
+      }
+    },
+    "related_youtube_videos": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "minLength": 5,
+        "pattern": "^[a-zA-Z0-9_-]{11}$",
+        "description": "YouTube video IDs from data enrichment response"
+      }
+    }
+  }
 }
+
+## ACTION GROUP USAGE EXAMPLES:
+
+### Call data-enrichment:
+```
+Action: data-enrichment
+Endpoint: /enrich-campaign-data  
+Payload: {"search_query": "smart fitness tracker wearables review", "max_results": 15, "content_type": "videos"}
 ```
 
-### STEP 4: Campaign Strategy Generation
-Use gathered insights to create appropriate campaign based on route.
-
-**CRITICAL: Your response must be valid JSON in this EXACT comprehensive structure:**
-
-```json
-{
-  "product": {
-    "description": "Detailed product description based on analysis",
-    "image": {
-      "labels": ["detected_label1", "detected_label2", "detected_label3"]
-    }
-  },
-  "content_ideas": [
-    {
-      "platform": "Instagram",
-      "topic": "Engaging topic for content",
-      "engagement_score": 88,
-      "caption": "Compelling caption text with call-to-action",
-      "hashtags": ["#relevant", "#hashtags", "#here"]
-    },
-    {
-      "platform": "TikTok", 
-      "topic": "Trending topic for TikTok",
-      "engagement_score": 85,
-      "caption": "Short engaging TikTok caption",
-      "hashtags": ["#tiktok", "#trending", "#viral"]
-    },
-    {
-      "platform": "YouTube",
-      "topic": "Educational or entertaining topic",
-      "engagement_score": 82,
-      "caption": "YouTube description with SEO keywords",
-      "hashtags": ["#youtube", "#education", "#howto"]
-    }
-  ],
-  "campaigns": [
-    {
-      "name": "Primary Marketing Campaign",
-      "duration": "4 weeks",
-      "posts_per_week": 3,
-      "platforms": ["Instagram", "TikTok", "YouTube"],
-      "calendar": {
-        "Week 1": "Campaign launch and awareness building activities",
-        "Week 2": "Engagement and community building focus",
-        "Week 3": "Educational content and value demonstration",
-        "Week 4": "Conversion focus and call-to-action emphasis"
-      },
-      "adaptations": {
-        "Instagram": "Visual storytelling with high-quality images and reels",
-        "TikTok": "Short engaging videos with trending audio and effects",
-        "YouTube": "Longer form educational and entertaining content"
-      }
-    }
-  ],
-  "generated_assets": {
-    "image_prompts": [
-      "Professional product photography prompt 1",
-      "Lifestyle usage scenario prompt 2", 
-      "Creative marketing visual prompt 3"
-    ],
-    "video_scripts": [
-      {
-        "type": "Short form video",
-        "content": "Script for 15-30 second engaging video content"
-      },
-      {
-        "type": "Long form video", 
-        "content": "Script for detailed product demonstration or tutorial"
-      }
-    ],
-    "email_templates": [
-      {
-        "subject": "Compelling email subject line",
-        "body": "Professional email template with personalization and clear CTA"
-      }
-    ],
-    "blog_outlines": [
-      {
-        "title": "SEO-optimized blog post title",
-        "points": [
-          "Key point 1 with value proposition",
-          "Key point 2 with supporting details",
-          "Key point 3 with call-to-action"
-        ]
-      }
-    ]
-  },
-  "platform_content": {
-    "instagram": {
-      "content_themes": ["theme1", "theme2"],
-      "recommended_formats": ["format1", "format2"],
-      "sample_post": "Sample Instagram post text",
-      "hashtags": ["#hashtag1", "#hashtag2"],
-      "posting_schedule": "Best times to post"
-    },
-    "tiktok": {
-      "content_themes": ["theme1", "theme2"],
-      "recommended_formats": ["format1", "format2"],
-      "sample_post": "Sample TikTok post text",
-      "hashtags": ["#hashtag1", "#hashtag2"],
-      "trending_sounds": ["sound1", "sound2"]
-    },
-    "youtube": {
-      "content_themes": ["theme1", "theme2"],
-      "recommended_formats": ["format1", "format2"],
-      "sample_post": "Sample YouTube description",
-      "video_ideas": ["idea1", "idea2"],
-      "seo_keywords": ["keyword1", "keyword2"]
-    }
-  },
-  "market_trends": {
-    "trending_keywords": ["keyword1", "keyword2", "keyword3"],
-    "competitor_insights": ["insight1", "insight2"],
-    "market_opportunities": ["opportunity1", "opportunity2"],
-    "seasonal_trends": ["trend1", "trend2"]
-  },
-  "success_metrics": {
-    "engagement_targets": {
-      "likes": "target_range",
-      "comments": "target_range",
-      "shares": "target_range"
-    },
-    "reach_goals": {
-      "impressions": "target_number",
-      "unique_users": "target_number"
-    },
-    "conversion_metrics": {
-      "click_through_rate": "target_percentage",
-      "conversion_rate": "target_percentage"
-    }
-  },
-  "analytics": {
-    "estimatedReach": 150000,
-    "projectedEngagement": 8.5,
-    "conversionRate": 2.3,
-    "roi": 4.2
-  },
-  "related_youtube_videos": []
-}
+### Call image-analysis (if s3_info provided):
+```
+Action: image-analysis
+Endpoint: /analyze-product-image
+Payload: {"product_info": {"name": "Product", "description": "Desc", "category": "Cat"}, "s3_info": {"bucket": "bucket", "key": "key"}}
 ```
 
-**For /campaign route:**
-- Fill all sections with data-driven insights from image analysis and data enrichment
-- Focus on immediate actionable content recommendations
-- NO visual asset generation or placeholders
-
-**For /comprehensive-campaign route:**
-- Enhanced data with cultural adaptations from cultural intelligence insights
-- Include placeholder references in content where async assets will be generated
-- Add cultural considerations to platform content
-
-## Search Query Construction:
-From image analysis results, construct search queries that include:
-- Primary product keywords (from detected labels)
-- Product category + "review" or "unboxing" or "demo"  
-- High-confidence visual elements + target audience interests
-- Example: "wireless headphones review 2024 noise cancelling" or "smartphone camera test photography"
-
-## Key Principles:
-- **Route-based Workflow**: Follow different steps based on API endpoint
-- **Simple Campaign (/campaign)**: Image analysis → Data enrichment → Campaign generation (NO cultural intelligence, NO assets)
-- **Comprehensive Campaign (/comprehensive-campaign)**: Image analysis → Data enrichment → Cultural intelligence → Campaign with asset placeholders
-- **NO Direct Asset Generation**: Visual assets are generated asynchronously via event-driven architecture
-- **Use Placeholders**: For comprehensive campaigns, include asset placeholders like "{{PLACEHOLDER_SOCIAL_POST_IMAGE}}", "{{PLACEHOLDER_PRODUCT_BANNER}}", etc.
-- Use image analysis to inform the search query for data enrichment
-- **MANDATORY JSON OUTPUT**: Always respond with valid JSON in the exact structure shown above
-- **NO MARKDOWN**: Return only the JSON object, no markdown formatting or code blocks
-- **POPULATE ALL FIELDS**: Every field in the JSON structure must contain meaningful data based on your analysis
-- Include platform-specific adaptations based on route complexity
-
-## Output Format:
-Always structure your final response as JSON based on the route:
-
-**For /campaign route (Simple Campaign):**
-- campaign_strategy: Overall strategy incorporating visual and trend insights
-- platform_content: Specific content for each platform (text-based recommendations)
-- visual_insights: Key findings from image analysis
-- market_trends: Trending topics and keywords from YouTube data
-- success_metrics: KPIs and measurement recommendations
-- next_steps: Implementation guidance
-
-**For /comprehensive-campaign route (with Asset Placeholders):**
-- campaign_strategy: Enhanced strategy incorporating visual, trend, and cultural insights
-- platform_content: Specific content for each platform with asset placeholders (e.g., "{{PLACEHOLDER_SOCIAL_POST_IMAGE}}")
-- visual_insights: Key findings from image analysis
-- market_trends: Trending topics and keywords from YouTube data
-- cultural_adaptations: Market-specific cultural considerations and adaptations
-- asset_placeholders: List of placeholder asset types that will be generated asynchronously
-- success_metrics: KPIs and measurement recommendations with visual asset performance tracking
-- next_steps: Implementation guidance including asset generation timeline
+CRITICAL RULES:
+1. ALWAYS call data-enrichment action group first using the exact endpoint /enrich-campaign-data
+2. Extract ALL video_id values from the data enrichment response
+3. Put the actual video IDs in related_youtube_videos array (not placeholders)
+4. Return ONLY JSON - no markdown, no explanations, no function calls in output
+5. Replace [bracketed placeholders] with actual content based on product info and action group responses
 EOT
 
   prepare_agent = true
@@ -425,7 +674,7 @@ resource "aws_bedrockagent_agent_knowledge_base_association" "cultural_intellige
   count                = var.cultural_intelligence_kb_id != "" ? 1 : 0
   agent_id             = aws_bedrockagent_agent.supervisor.agent_id
   agent_version        = "DRAFT"
-  description          = "Cultural Intelligence Knowledge Base for cross-cultural campaign adaptation"
+  description          = "Cultural Intelligence Knowledge Base for adaptation"
   knowledge_base_id    = var.cultural_intelligence_kb_id
   knowledge_base_state = "ENABLED"
 
@@ -979,11 +1228,10 @@ locals {
 
 # Image Analysis Action Group
 resource "aws_bedrockagent_agent_action_group" "image_analysis" {
-  count                       = var.image_analysis_lambda_arn != "" ? 1 : 0
   action_group_name          = "image-analysis"
   agent_id                   = aws_bedrockagent_agent.supervisor.agent_id
   agent_version              = "DRAFT"
-  description                = "Action group for analyzing product images using Amazon Rekognition"
+  description                = "Analyze product images using Amazon Rekognition"
   
   action_group_executor {
     lambda = var.image_analysis_lambda_arn
@@ -1000,11 +1248,10 @@ resource "aws_bedrockagent_agent_action_group" "image_analysis" {
 
 # Data Enrichment Action Group
 resource "aws_bedrockagent_agent_action_group" "data_enrichment" {
-  count                       = var.data_enrichment_lambda_arn != "" ? 1 : 0
   action_group_name          = "data-enrichment"
   agent_id                   = aws_bedrockagent_agent.supervisor.agent_id
   agent_version              = "DRAFT"
-  description                = "Action group for enriching marketing campaigns with YouTube data and trends"
+  description                = "Enrich campaigns with YouTube data and trends"
   
   action_group_executor {
     lambda = var.data_enrichment_lambda_arn
@@ -1021,11 +1268,10 @@ resource "aws_bedrockagent_agent_action_group" "data_enrichment" {
 
 # Cultural Intelligence Action Group
 resource "aws_bedrockagent_agent_action_group" "cultural_intelligence" {
-  count                       = var.cultural_intelligence_lambda_arn != "" ? 1 : 0
   action_group_name          = "cultural-intelligence"
   agent_id                   = aws_bedrockagent_agent.supervisor.agent_id
   agent_version              = "DRAFT"
-  description                = "Action group for cross-cultural adaptation and market intelligence insights"
+  description                = "Cross-cultural adaptation and market intelligence"
   
   action_group_executor {
     lambda = var.cultural_intelligence_lambda_arn
@@ -1042,11 +1288,10 @@ resource "aws_bedrockagent_agent_action_group" "cultural_intelligence" {
 
 # Sentiment Analysis Action Group
 resource "aws_bedrockagent_agent_action_group" "sentiment_analysis" {
-  count                       = var.sentiment_analysis_lambda_arn != "" ? 1 : 0
   action_group_name          = "sentiment-analysis"
   agent_id                   = aws_bedrockagent_agent.supervisor.agent_id
   agent_version              = "DRAFT"
-  description                = "Action group for market sentiment analysis and actionable insights generation"
+  description                = "Market sentiment analysis and actionable insights"
   
   action_group_executor {
     lambda = var.sentiment_analysis_lambda_arn
@@ -1082,8 +1327,9 @@ resource "aws_bedrockagent_agent_action_group" "sentiment_analysis" {
 #   depends_on = [aws_bedrockagent_agent.supervisor]
 # }
 
-# Create agent alias for stable endpoint
+# Create agent alias for stable endpoint (only if no override is provided)
 resource "aws_bedrockagent_agent_alias" "supervisor_alias" {
+  count            = var.supervisor_agent_alias_id_override == "" ? 1 : 0
   agent_alias_name = "${var.environment}-alias"
   agent_id         = aws_bedrockagent_agent.supervisor.agent_id
   description      = "Stable alias for supervisor agent in ${var.environment} environment"

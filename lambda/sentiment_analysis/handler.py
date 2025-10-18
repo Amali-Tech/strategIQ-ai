@@ -44,6 +44,14 @@ def handle_bedrock_agent_invocation(event, context):
         function_name = event.get('function')
         parameters = event.get('parameters', {})
         
+        # Convert Bedrock parameter format (list of dicts) to dict format
+        if isinstance(parameters, list):
+            param_dict = {}
+            for param in parameters:
+                if isinstance(param, dict) and 'name' in param and 'value' in param:
+                    param_dict[param['name']] = param['value']
+            parameters = param_dict
+        
         print(f"Bedrock agent function: {function_name}")
         print(f"Parameters: {json.dumps(parameters)}")
         
@@ -93,9 +101,16 @@ def handle_sentiment_analysis(parameters, context):
     try:
         search_query = parameters.get('search_query')
         product_name = parameters.get('product_name', search_query)
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
         
         if not search_query:
             return create_error_response("search_query parameter is required")
+        
+        # Generate product_id if not provided
+        if not product_id:
+            product_id = str(uuid.uuid4())
+            print(f"Generated new product_id: {product_id}")
         
         print(f"Starting sentiment analysis for: {search_query}")
         
@@ -114,24 +129,28 @@ def handle_sentiment_analysis(parameters, context):
         # Step 5: Save to DynamoDB
         analysis_id = str(uuid.uuid4())
         analysis_record = {
-            'intelligence_id': analysis_id,  # Use intelligence_id as primary key to match table schema
-            'analysis_id': analysis_id,      # Keep analysis_id for backward compatibility
+            'product_id': product_id,
+            'user_id': user_id,
+            'analysis_id': analysis_id,  # Keep analysis_id for backward compatibility
             'search_query': search_query,
             'product_name': product_name,
             'sentiment_results': sentiment_results,
             'analysis_summary': analysis_summary,
             'content_analyzed': len(content_data),
             'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
             'request_id': context.aws_request_id,
             'analysis_type': 'sentiment_analysis'
         }
         
-        table_name = get_dynamodb_table_name()
-        save_analysis_to_dynamodb(table_name, analysis_record)
+        table_name = "products"  # Use the products table
+        save_sentiment_analysis_to_products(table_name, product_id, user_id, analysis_record)
         
         # Return structured response
         return create_success_response({
             'analysis_id': analysis_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'search_query': search_query,
             'product_name': product_name,
             'sentiment_summary': analysis_summary,
@@ -151,20 +170,28 @@ def handle_action_items_generation(parameters, context):
         analysis_id = parameters.get('analysis_id')
         search_query = parameters.get('search_query')
         sentiment_data = parameters.get('sentiment_data')
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
         
-        # If analysis_id is provided, retrieve from DynamoDB
-        if analysis_id:
-            sentiment_data = retrieve_analysis_from_dynamodb(analysis_id)
-        elif search_query:
-            # Perform fresh sentiment analysis
-            sentiment_params = {'search_query': search_query}
+        # Generate product_id if not provided
+        if not product_id:
+            product_id = str(uuid.uuid4())
+            print(f"Generated new product_id: {product_id}")
+        
+        # If sentiment_data is not provided but search_query is, perform fresh sentiment analysis
+        if not sentiment_data and search_query:
+            sentiment_params = {
+                'search_query': search_query,
+                'product_id': product_id,
+                'user_id': user_id
+            }
             sentiment_response = handle_sentiment_analysis(sentiment_params, context)
             if sentiment_response['statusCode'] != 200:
                 return sentiment_response
             sentiment_data = json.loads(sentiment_response['body'])['data']
         
         if not sentiment_data:
-            return create_error_response("sentiment_data, analysis_id, or search_query is required")
+            return create_error_response("sentiment_data or search_query is required")
         
         print(f"Generating action items for sentiment data")
         
@@ -177,23 +204,28 @@ def handle_action_items_generation(parameters, context):
         # Save to DynamoDB
         action_id = str(uuid.uuid4())
         action_record = {
-            'intelligence_id': action_id,  # Use intelligence_id as primary key
+            'product_id': product_id,
+            'user_id': user_id,
             'analysis_id': action_id,      # Keep analysis_id for backward compatibility
             'source_analysis_id': analysis_id,
             'search_query': sentiment_data.get('search_query'),
             'action_items': structured_actions,
             'generated_actions': action_items,
             'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
             'request_id': context.aws_request_id,
             'analysis_type': 'action_items'
         }
         
-        table_name = get_dynamodb_table_name()
-        save_analysis_to_dynamodb(table_name, action_record)
+        table_name = "products"  # Use the products table
+        save_sentiment_analysis_to_products(table_name, product_id, user_id, action_record)
         
         return create_success_response({
             'action_id': action_id,
-            'source_analysis': analysis_id,
+            'product_id': product_id,
+            'user_id': user_id,
+            'source_analysis_id': analysis_id,
+            'search_query': sentiment_data.get('search_query'),
             'action_items': structured_actions,
             'generated_insights': action_items,
             'storage_location': f"DynamoDB table: {table_name}",
@@ -209,6 +241,13 @@ def handle_comprehensive_sentiment_analysis(parameters, context):
     try:
         search_query = parameters.get('search_query')
         product_name = parameters.get('product_name', search_query)
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
+        
+        # Generate product_id if not provided
+        if not product_id:
+            product_id = str(uuid.uuid4())
+            print(f"Generated new product_id: {product_id}")
         
         if not search_query:
             return create_error_response("search_query parameter is required")
@@ -233,22 +272,26 @@ def handle_comprehensive_sentiment_analysis(parameters, context):
         # Step 3: Combine results
         comprehensive_id = str(uuid.uuid4())
         comprehensive_record = {
-            'intelligence_id': comprehensive_id,  # Use intelligence_id as primary key
+            'product_id': product_id,
+            'user_id': user_id,
             'analysis_id': comprehensive_id,      # Keep analysis_id for backward compatibility
             'search_query': search_query,
             'product_name': product_name,
             'sentiment_analysis': sentiment_data,
             'action_items': action_data,
             'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
             'request_id': context.aws_request_id,
             'analysis_type': 'comprehensive'
         }
         
-        table_name = get_dynamodb_table_name()
-        save_analysis_to_dynamodb(table_name, comprehensive_record)
+        table_name = "products"  # Use the products table
+        save_sentiment_analysis_to_products(table_name, product_id, user_id, comprehensive_record)
         
         return create_success_response({
             'analysis_id': comprehensive_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'search_query': search_query,
             'product_name': product_name,
             'sentiment_analysis': sentiment_data,
@@ -881,16 +924,53 @@ def convert_floats_to_decimals(obj):
     else:
         return obj
 
-def save_analysis_to_dynamodb(table_name, analysis_record):
-    """Save sentiment analysis to DynamoDB."""
+def save_sentiment_analysis_to_products(table_name, product_id, user_id, analysis_record):
+    """Save or update sentiment analysis in the products table."""
     try:
+        table = dynamodb.Table(table_name)
+        
         # Convert floats to Decimals for DynamoDB compatibility
         analysis_record = convert_floats_to_decimals(analysis_record)
-        table = dynamodb.Table(table_name)
-        table.put_item(Item=analysis_record)
-        print(f"Saved analysis record to DynamoDB: {analysis_record['analysis_id']}")
+        
+        # Check if product record exists
+        try:
+            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+            existing_item = response.get('Item')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException':
+                # Table might not exist or wrong key structure
+                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
+            raise
+        
+        if existing_item:
+            # Update existing record with sentiment analysis
+            update_expression = "SET sentiment_analysis = :analysis, updated_at = :updated_at"
+            expression_values = {
+                ':analysis': analysis_record,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.update_item(
+                Key={'product_id': product_id, 'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values
+            )
+            print(f"Updated sentiment analysis for product {product_id}")
+        else:
+            # Create new product record with sentiment analysis
+            new_record = {
+                'product_id': product_id,
+                'user_id': user_id,
+                'sentiment_analysis': analysis_record,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=new_record)
+            print(f"Created new product record {product_id} with sentiment analysis")
+            
     except Exception as e:
-        print(f"Error saving to DynamoDB: {str(e)}")
+        print(f"Error saving sentiment analysis to products table: {str(e)}")
         raise
 
 def retrieve_analysis_from_dynamodb(analysis_id):

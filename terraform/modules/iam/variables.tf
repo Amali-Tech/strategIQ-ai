@@ -15,8 +15,12 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
-variable "campaign_tracking_policy_arn" {
-  description = "ARN of the campaign tracking policy"
+variable "aws_region" {
+  description = "AWS region"
   type        = string
-  default     = ""
+}
+
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
 }

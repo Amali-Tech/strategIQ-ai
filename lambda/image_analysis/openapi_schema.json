@@ -1,15 +1,15 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Image Analysis Action Group",
-    "version": "1.0.0",
-    "description": "Action group for analyzing product images using Amazon Rekognition and storing structured data"
+    "title": "Image Analysis API",
+    "description": "Analyzes product images using Amazon Rekognition to detect labels, objects, and generate campaign recommendations. Results are stored in DynamoDB for campaign tracking.",
+    "version": "1.0.0"
   },
   "paths": {
-    "/analyze-image": {
+    "/analyze-product-image": {
       "post": {
-        "summary": "Analyze product image using Rekognition",
-        "description": "Analyzes a product image from S3 using Amazon Rekognition to detect labels, then stores structured analysis data in DynamoDB",
+        "summary": "Analyze product image for campaign insights",
+        "description": "Uses Amazon Rekognition to analyze product images, detect labels and objects, and generate marketing campaign recommendations. The analysis results are stored in DynamoDB for future reference.",
         "operationId": "analyze_product_image",
         "requestBody": {
           "required": true,
@@ -17,48 +17,43 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["product_info", "s3_info"],
                 "properties": {
                   "product_info": {
                     "type": "object",
-                    "description": "Information about the product being analyzed",
-                    "required": ["name"],
+                    "description": "Product information",
                     "properties": {
                       "name": {
                         "type": "string",
-                        "description": "Product name",
-                        "example": "EcoSmart Water Bottle"
+                        "description": "Product name"
                       },
                       "description": {
                         "type": "string",
-                        "description": "Product description",
-                        "example": "Smart water bottle with temperature control and hydration tracking"
+                        "description": "Product description"
                       },
                       "category": {
                         "type": "string",
-                        "description": "Product category",
-                        "example": "Health & Wellness"
+                        "description": "Product category"
                       }
-                    }
+                    },
+                    "required": ["name"]
                   },
                   "s3_info": {
                     "type": "object",
-                    "description": "S3 location of the product image",
-                    "required": ["bucket", "key"],
+                    "description": "S3 location of the image to analyze",
                     "properties": {
                       "bucket": {
                         "type": "string",
-                        "description": "S3 bucket name containing the image",
-                        "example": "degenerals-mi-dev-images"
+                        "description": "S3 bucket name"
                       },
                       "key": {
                         "type": "string",
-                        "description": "S3 object key (path) to the image file",
-                        "example": "uploads/product-images/water-bottle.jpg"
+                        "description": "S3 object key"
                       }
-                    }
+                    },
+                    "required": ["bucket", "key"]
                   }
-                }
+                },
+                "required": ["product_info", "s3_info"]
               }
             }
           }
@@ -78,47 +73,45 @@
                     "data": {
                       "type": "object",
                       "properties": {
-                        "analysis_id": {
+                        "product_id": {
                           "type": "string",
-                          "description": "Unique identifier for this analysis",
-                          "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                          "description": "Unique identifier for the analyzed product"
                         },
                         "product_name": {
                           "type": "string",
-                          "description": "Name of the analyzed product",
-                          "example": "EcoSmart Water Bottle"
+                          "description": "Name of the analyzed product"
                         },
                         "detected_labels": {
                           "type": "array",
-                          "description": "Top detected labels from Rekognition",
+                          "description": "Top 10 detected labels from Rekognition",
                           "items": {
                             "type": "object",
                             "properties": {
                               "name": {
                                 "type": "string",
-                                "example": "Bottle"
+                                "description": "Label name"
                               },
                               "confidence": {
                                 "type": "number",
-                                "format": "float",
-                                "example": 98.5
+                                "description": "Confidence score (0-100)"
                               },
                               "categories": {
                                 "type": "array",
+                                "description": "Label categories",
                                 "items": {
                                   "type": "string"
-                                },
-                                "example": ["Objects", "Container"]
+                                }
                               },
                               "instances": {
                                 "type": "integer",
-                                "example": 1
+                                "description": "Number of instances detected"
                               }
                             }
                           }
                         },
                         "confidence_summary": {
                           "type": "object",
+                          "description": "Summary of detection confidence",
                           "properties": {
                             "high_confidence_labels": {
                               "type": "array",
@@ -130,96 +123,78 @@
                                     "type": "string"
                                   },
                                   "confidence": {
-                                    "type": "number",
-                                    "format": "float"
+                                    "type": "number"
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "instances": {
+                                    "type": "integer"
                                   }
                                 }
                               }
                             },
                             "total_labels_detected": {
                               "type": "integer",
-                              "example": 25
+                              "description": "Total number of labels detected"
                             }
                           }
                         },
                         "analysis_timestamp": {
                           "type": "string",
-                          "format": "date-time",
-                          "description": "ISO timestamp of when analysis was performed",
-                          "example": "2025-10-16T23:30:00.000Z"
+                          "description": "Timestamp when analysis was performed"
                         },
                         "storage_location": {
                           "type": "string",
-                          "description": "Where the full analysis data is stored",
-                          "example": "DynamoDB table: degenerals-mi-dev-image-analysis"
+                          "description": "DynamoDB storage location"
                         },
                         "recommendations": {
                           "type": "object",
-                          "description": "AI-generated campaign recommendations based on image analysis",
+                          "description": "Campaign recommendations based on image analysis",
                           "properties": {
                             "primary_visual_elements": {
                               "type": "array",
-                              "description": "Primary visual elements detected in the image",
+                              "description": "Key visual elements detected",
                               "items": {
                                 "type": "string"
-                              },
-                              "example": [
-                                "Bottle",
-                                "Liquid",
-                                "Container",
-                                "Product",
-                                "Technology"
-                              ]
+                              }
                             },
                             "suggested_hashtags": {
                               "type": "array",
-                              "description": "Suggested hashtags based on detected elements",
+                              "description": "Recommended hashtags for social media",
                               "items": {
                                 "type": "string"
-                              },
-                              "example": [
-                                "#bottle",
-                                "#hydration",
-                                "#smarttech",
-                                "#wellness",
-                                "#sustainable"
-                              ]
+                              }
                             },
                             "content_themes": {
                               "type": "array",
-                              "description": "Suggested content themes for campaigns",
+                              "description": "Content themes identified",
                               "items": {
                                 "type": "string"
-                              },
-                              "example": [
-                                "technology",
-                                "wellness",
-                                "sustainability"
-                              ]
+                              }
                             },
                             "platform_suitability": {
                               "type": "object",
-                              "description": "Suitability assessment for different social media platforms",
+                              "description": "Platform suitability assessment",
                               "properties": {
                                 "Instagram": {
                                   "type": "string",
-                                  "enum": ["High", "Medium", "Low"],
-                                  "example": "High"
+                                  "enum": ["High", "Medium", "Low"]
                                 },
                                 "TikTok": {
                                   "type": "string",
-                                  "enum": ["High", "Medium", "Low"],
-                                  "example": "Medium"
+                                  "enum": ["High", "Medium", "Low"]
                                 },
                                 "LinkedIn": {
                                   "type": "string",
-                                  "enum": ["High", "Medium", "Low"],
-                                  "example": "Medium"
+                                  "enum": ["High", "Medium", "Low"]
                                 },
                                 "Facebook": {
                                   "type": "string",
-                                  "enum": ["High", "Medium", "Low"],
-                                  "example": "Medium"
+                                  "enum": ["High", "Medium", "Low"]
                                 }
                               }
                             }
@@ -233,7 +208,7 @@
             }
           },
           "400": {
-            "description": "Bad request - invalid parameters or missing required fields",
+            "description": "Bad request - missing required parameters, invalid image, or analysis failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -244,28 +219,7 @@
                       "example": false
                     },
                     "error": {
-                      "type": "string",
-                      "example": "Product name is required"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Image analysis failed: Rekognition service error"
+                      "type": "string"
                     }
                   }
                 }

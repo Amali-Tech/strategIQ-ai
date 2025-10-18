@@ -5,6 +5,8 @@ import urllib.parse
 from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
+from datetime import datetime
+import uuid
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
@@ -28,6 +30,14 @@ def lambda_handler(event, context):
         function_name = event.get('function')
         parameters = event.get('parameters', {})
         
+        # Convert Bedrock parameter format (list of dicts) to dict format
+        if isinstance(parameters, list):
+            param_dict = {}
+            for param in parameters:
+                if isinstance(param, dict) and 'name' in param and 'value' in param:
+                    param_dict[param['name']] = param['value']
+            parameters = param_dict
+        
         if action_group != 'data-enrichment':
             return create_error_response(f"Invalid action group: {action_group}")
         
@@ -44,11 +54,25 @@ def handle_data_enrichment(parameters, context):
     """Handle data enrichment with YouTube API integration."""
     try:
         # Extract parameters
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', '')
         search_query = parameters.get('search_query', '')
         max_results = parameters.get('max_results', 10)
         content_type = parameters.get('content_type', 'all')  # 'all', 'videos', 'channels', 'playlists'
         
-        print(f"Processing search query: {search_query}")
+        # Validate required parameters
+        if not product_id:
+            return create_error_response("product_id parameter is required")
+        if not user_id:
+            return create_error_response("user_id parameter is required")
+        
+        # Convert max_results to int if it's a string
+        try:
+            max_results = int(max_results)
+        except (ValueError, TypeError):
+            max_results = 10
+        
+        print(f"Processing search query: {search_query} for product_id: {product_id}, user_id: {user_id}")
         print(f"Content type: {content_type}, Max results: {max_results}")
         
         if not search_query:
@@ -60,13 +84,15 @@ def handle_data_enrichment(parameters, context):
         # Process and structure the results
         enrichment_data = process_youtube_results(youtube_results, search_query)
         
-        # Store enrichment data in DynamoDB
-        enrichment_id = store_enrichment_data(enrichment_data, search_query, context)
+        # Store enrichment data in DynamoDB products table
+        enrichment_id = store_enrichment_data_to_products(product_id, user_id, enrichment_data, search_query, context)
         
         # Prepare response
         response_data = {
             'success': True,
             'enrichment_id': enrichment_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'search_query': search_query,
             'results_count': len(enrichment_data.get('videos', [])),
             'enrichment_data': enrichment_data,
@@ -406,6 +432,79 @@ def store_enrichment_data(enrichment_data, search_query, context=None):
         print(f"Error storing enrichment data: {str(e)}")
         return "storage-failed"
 
+def store_enrichment_data_to_products(product_id, user_id, enrichment_data, search_query, context=None):
+    """Save or update data enrichment in the products table."""
+    try:
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME')
+        if not table_name:
+            print("Warning: DynamoDB table name not configured")
+            return f"enrich_{hash(search_query)}_{len(enrichment_data.get('videos', []))}"
+        
+        table = dynamodb.Table(table_name)
+        
+        # Convert float values to Decimal for DynamoDB compatibility
+        def convert_floats(obj):
+            if isinstance(obj, dict):
+                return {k: convert_floats(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_floats(v) for v in obj]
+            elif isinstance(obj, float):
+                return Decimal(str(obj))
+            else:
+                return obj
+        
+        enrichment_record = {
+            'enrichment_id': f"enrich_{hash(search_query)}_{len(enrichment_data.get('videos', []))}",
+            'search_query': search_query,
+            'enrichment_data': convert_floats(enrichment_data),
+            'insights': convert_floats(generate_content_insights(enrichment_data)),
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        
+        # Check if product record exists
+        try:
+            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+            existing_item = response.get('Item')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException':
+                # Table might not exist or wrong key structure
+                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
+            raise
+        
+        if existing_item:
+            # Update existing record with data enrichment
+            update_expression = "SET data_enrichment = :enrichment, updated_at = :updated_at"
+            expression_values = {
+                ':enrichment': enrichment_record,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.update_item(
+                Key={'product_id': product_id, 'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values
+            )
+            print(f"Updated data enrichment for product {product_id}")
+        else:
+            # Create new product record with data enrichment
+            new_record = {
+                'product_id': product_id,
+                'user_id': user_id,
+                'data_enrichment': enrichment_record,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=new_record)
+            print(f"Created new product record {product_id} with data enrichment")
+        
+        return enrichment_record['enrichment_id']
+        
+    except Exception as e:
+        print(f"Error storing enrichment data to products table: {str(e)}")
+        return f"enrich_{hash(search_query)}_{len(enrichment_data.get('videos', []))}"
+
 def decimal_default(obj):
     """JSON serializer for objects not serializable by default json code."""
     if isinstance(obj, Decimal):
@@ -430,9 +529,15 @@ def handle_bedrock_agent_invocation(event, context):
         if function_name == 'enrich_campaign_data' or api_path in ['/enrich-data', '/enrich-campaign-data']:
             # Validate required fields
             search_query = json_body.get('search_query')
+            product_id = json_body.get('product_id')
+            user_id = json_body.get('user_id')
             
             if not search_query:
                 return create_bedrock_error_response("search_query is required", api_path)
+            if not product_id:
+                return create_bedrock_error_response("product_id is required", api_path)
+            if not user_id:
+                return create_bedrock_error_response("user_id is required", api_path)
             
             # Call the enrichment function with the extracted parameters
             result = handle_data_enrichment(json_body, context)
@@ -478,7 +583,11 @@ def extract_json_from_bedrock_request(request_body, api_path):
                 prop_value = prop.get('value', '')
                 
                 # Handle different value types
-                if prop_name == 'search_query':
+                if prop_name == 'product_id':
+                    json_body['product_id'] = prop_value
+                elif prop_name == 'user_id':
+                    json_body['user_id'] = prop_value if prop_value else 'anonymous'
+                elif prop_name == 'search_query':
                     json_body['search_query'] = prop_value
                 elif prop_name == 'max_results':
                     try:

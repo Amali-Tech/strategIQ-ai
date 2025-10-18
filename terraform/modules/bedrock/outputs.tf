@@ -12,12 +12,12 @@ output "supervisor_agent_arn" {
 
 output "supervisor_agent_alias_id" {
   description = "Alias ID of the supervisor Bedrock agent"
-  value       = aws_bedrockagent_agent_alias.supervisor_alias.agent_alias_id
+  value       = length(aws_bedrockagent_agent_alias.supervisor_alias) > 0 ? aws_bedrockagent_agent_alias.supervisor_alias[0].agent_alias_id : null
 }
 
 output "supervisor_agent_alias_arn" {
   description = "ARN of the supervisor Bedrock agent alias"
-  value       = aws_bedrockagent_agent_alias.supervisor_alias.agent_alias_arn
+  value       = length(aws_bedrockagent_agent_alias.supervisor_alias) > 0 ? aws_bedrockagent_agent_alias.supervisor_alias[0].agent_alias_arn : null
 }
 
 output "bedrock_agent_role_arn" {

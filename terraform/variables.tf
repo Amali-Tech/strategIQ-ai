@@ -68,3 +68,9 @@ variable "cultural_intelligence_kb_id" {
   type        = string
   default     = ""
 }
+
+variable "aws_account_id" {
+  description = "AWS account ID"
+  type        = string
+}
+

@@ -43,6 +43,14 @@ def lambda_handler(event, context):
         function_name = event.get('function')
         parameters = event.get('parameters', {})
         
+        # Convert Bedrock parameter format (list of dicts) to dict format
+        if isinstance(parameters, list):
+            param_dict = {}
+            for param in parameters:
+                if isinstance(param, dict) and 'name' in param and 'value' in param:
+                    param_dict[param['name']] = param['value']
+            parameters = param_dict
+        
         if action_group != 'image-analysis':
             return create_error_response(f"Invalid action group: {action_group}")
         
@@ -68,8 +76,25 @@ def handle_image_analysis(parameters, context):
     """
     try:
         # Validate required parameters
-        product_info = parameters.get('product_info', {})
-        s3_info = parameters.get('s3_info', {})
+        product_info_raw = parameters.get('product_info', {})
+        s3_info_raw = parameters.get('s3_info', {})
+        
+        # Parse JSON strings if they are strings
+        if isinstance(product_info_raw, str):
+            try:
+                product_info = json.loads(product_info_raw)
+            except json.JSONDecodeError:
+                return create_error_response("Invalid product_info JSON format")
+        else:
+            product_info = product_info_raw
+            
+        if isinstance(s3_info_raw, str):
+            try:
+                s3_info = json.loads(s3_info_raw)
+            except json.JSONDecodeError:
+                return create_error_response("Invalid s3_info JSON format")
+        else:
+            s3_info = s3_info_raw
         
         if not product_info.get('name'):
             return create_error_response("Product name is required")
@@ -92,7 +117,7 @@ def handle_image_analysis(parameters, context):
         analysis_results = analyze_image_with_rekognition(bucket, key)
         
         # Create structured data record
-        analysis_record = create_analysis_record(
+        product_record = create_product_record(
             product_info=product_info,
             s3_info=s3_info,
             analysis_results=analysis_results,
@@ -100,12 +125,12 @@ def handle_image_analysis(parameters, context):
         )
         
         # Save to DynamoDB
-        table_name = get_dynamodb_table_name()
-        save_analysis_to_dynamodb(table_name, analysis_record)
+        table_name = "products"
+        save_product_to_dynamodb(table_name, product_record)
         
         # Return structured response for Bedrock agent
         return create_success_response({
-            'analysis_id': analysis_record['analysis_id'],
+            'product_id': product_record['product_id'],
             'product_name': product_info['name'],
             'detected_labels': analysis_results['labels'][:10],  # Top 10 labels
             'confidence_summary': {
@@ -115,7 +140,7 @@ def handle_image_analysis(parameters, context):
                 ],
                 'total_labels_detected': len(analysis_results['labels'])
             },
-            'analysis_timestamp': analysis_record['created_at'],
+            'analysis_timestamp': product_record['created_at'],
             'storage_location': f"DynamoDB table: {table_name}",
             'recommendations': generate_campaign_recommendations(analysis_results['labels'])
         })
@@ -177,9 +202,9 @@ def analyze_image_with_rekognition(bucket, key):
         print(f"Rekognition error: {error_code} - {error_message}")
         raise Exception(f"Rekognition analysis failed: {error_message}")
 
-def create_analysis_record(product_info, s3_info, analysis_results, request_id):
+def create_product_record(product_info, s3_info, analysis_results, request_id):
     """
-    Create a structured analysis record for DynamoDB storage.
+    Create a structured product record for DynamoDB storage.
     
     Args:
         product_info: Product information
@@ -188,11 +213,16 @@ def create_analysis_record(product_info, s3_info, analysis_results, request_id):
         request_id: Lambda request ID
         
     Returns:
-        Dictionary representing the analysis record
+        Dictionary representing the product record
     """
     from decimal import Decimal
     
-    analysis_id = str(uuid.uuid4())
+    product_id = str(uuid.uuid4())
+    
+    # Extract user_id from S3 key path (uploads/{user_id}/...)
+    s3_key_parts = s3_info['key'].split('/')
+    user_id = s3_key_parts[1] if len(s3_key_parts) > 1 else 'anonymous'
+    
     timestamp = datetime.utcnow().isoformat()
     
     # Convert float values to Decimal for DynamoDB compatibility
@@ -206,7 +236,8 @@ def create_analysis_record(product_info, s3_info, analysis_results, request_id):
         return obj
     
     return {
-        'analysis_id': analysis_id,
+        'product_id': product_id,
+        'user_id': user_id,
         'product_name': product_info['name'],
         'product_description': product_info.get('description', ''),
         'product_category': product_info.get('category', ''),
@@ -222,24 +253,24 @@ def create_analysis_record(product_info, s3_info, analysis_results, request_id):
         'analysis_status': 'completed'
     }
 
-def save_analysis_to_dynamodb(table_name, record):
+def save_product_to_dynamodb(table_name, record):
     """
-    Save analysis record to DynamoDB table.
+    Save product record to DynamoDB table.
     
     Args:
         table_name: DynamoDB table name
-        record: Analysis record to save
+        record: Product record to save
     """
     try:
         table = dynamodb.Table(table_name)
         table.put_item(Item=record)
-        print(f"Successfully saved analysis record {record['analysis_id']} to DynamoDB")
+        print(f"Successfully saved product record {record['product_id']} to DynamoDB")
         
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']
         print(f"DynamoDB error: {error_code} - {error_message}")
-        raise Exception(f"Failed to save analysis to DynamoDB: {error_message}")
+        raise Exception(f"Failed to save product to DynamoDB: {error_message}")
 
 def generate_campaign_recommendations(labels):
     """

@@ -49,3 +49,9 @@ variable "visual_asset_queue_arn" {
   type        = string
   default     = ""
 }
+
+variable "image_analysis_role_arn" {
+  description = "ARN of the dedicated IAM role for image analysis Lambda"
+  type        = string
+  default     = ""
+}

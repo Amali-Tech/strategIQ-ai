@@ -1,0 +1,556 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Sentiment Analysis Lambda Function",
+    "description": "AWS Lambda function for comprehensive sentiment analysis, action item generation, and marketing insights using AWS Comprehend, Bedrock, and YouTube API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://lambda.{region}.amazonaws.com",
+      "description": "AWS Lambda service endpoint"
+    }
+  ],
+  "paths": {
+    "/analyze_sentiment": {
+      "post": {
+        "summary": "Perform sentiment analysis on product/brand content",
+        "description": "Analyzes sentiment from YouTube videos, news articles, and social media content related to a product or brand using AWS Comprehend",
+        "operationId": "analyzeSentiment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentimentAnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sentiment analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentimentAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or analysis failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate_action_items": {
+      "post": {
+        "summary": "Generate actionable insights from sentiment data",
+        "description": "Uses AWS Bedrock to generate prioritized action items and marketing recommendations based on sentiment analysis results",
+        "operationId": "generateActionItems",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Action items generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionItemsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or generation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/comprehensive_sentiment_analysis": {
+      "post": {
+        "summary": "Complete sentiment analysis and action item generation",
+        "description": "Performs full sentiment analysis and generates actionable insights in a single operation, combining YouTube, news, and social media analysis with Bedrock-powered recommendations",
+        "operationId": "comprehensiveSentimentAnalysis",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComprehensiveAnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Comprehensive analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensiveAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or analysis failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SentimentAnalysisRequest": {
+        "type": "object",
+        "required": ["search_query"],
+        "properties": {
+          "search_query": {
+            "type": "string",
+            "description": "The product, brand, or topic to analyze sentiment for",
+            "example": "iPhone 15 Pro"
+          },
+          "product_name": {
+            "type": "string",
+            "description": "Specific product name (defaults to search_query if not provided)",
+            "example": "iPhone 15 Pro Max"
+          },
+          "product_id": {
+            "type": "string",
+            "description": "Unique product identifier (auto-generated if not provided)",
+            "example": "prod_123456"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User identifier (defaults to 'anonymous')",
+            "example": "user_789"
+          }
+        }
+      },
+      "ActionItemsRequest": {
+        "type": "object",
+        "required": ["sentiment_data"],
+        "properties": {
+          "analysis_id": {
+            "type": "string",
+            "description": "ID of existing sentiment analysis (optional if sentiment_data provided)",
+            "example": "analysis_123"
+          },
+          "search_query": {
+            "type": "string",
+            "description": "Search query to perform fresh sentiment analysis (optional if sentiment_data provided)",
+            "example": "iPhone 15 Pro"
+          },
+          "sentiment_data": {
+            "type": "object",
+            "description": "Existing sentiment analysis results to generate action items from",
+            "properties": {
+              "search_query": {
+                "type": "string"
+              },
+              "sentiment_summary": {
+                "type": "object"
+              },
+              "detailed_results": {
+                "type": "array"
+              }
+            }
+          },
+          "product_id": {
+            "type": "string",
+            "description": "Unique product identifier (auto-generated if not provided)",
+            "example": "prod_123456"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User identifier (defaults to 'anonymous')",
+            "example": "user_789"
+          }
+        }
+      },
+      "ComprehensiveAnalysisRequest": {
+        "type": "object",
+        "required": ["search_query"],
+        "properties": {
+          "search_query": {
+            "type": "string",
+            "description": "The product, brand, or topic to analyze",
+            "example": "iPhone 15 Pro"
+          },
+          "product_name": {
+            "type": "string",
+            "description": "Specific product name (defaults to search_query if not provided)",
+            "example": "iPhone 15 Pro Max"
+          },
+          "product_id": {
+            "type": "string",
+            "description": "Unique product identifier (auto-generated if not provided)",
+            "example": "prod_123456"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User identifier (defaults to 'anonymous')",
+            "example": "user_789"
+          }
+        }
+      },
+      "SentimentAnalysisResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "analysis_id": {
+                "type": "string",
+                "description": "Unique identifier for this analysis",
+                "example": "analysis_123456"
+              },
+              "product_id": {
+                "type": "string",
+                "example": "prod_123456"
+              },
+              "user_id": {
+                "type": "string",
+                "example": "user_789"
+              },
+              "search_query": {
+                "type": "string",
+                "example": "iPhone 15 Pro"
+              },
+              "product_name": {
+                "type": "string",
+                "example": "iPhone 15 Pro Max"
+              },
+              "sentiment_summary": {
+                "type": "object",
+                "properties": {
+                  "overall_sentiment": {
+                    "type": "string",
+                    "enum": ["positive", "negative", "neutral", "mixed"],
+                    "example": "positive"
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "format": "float",
+                    "example": 0.85
+                  },
+                  "total_analyzed": {
+                    "type": "integer",
+                    "example": 150
+                  },
+                  "sentiment_percentages": {
+                    "type": "object",
+                    "properties": {
+                      "positive": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 65.5
+                      },
+                      "negative": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 15.2
+                      },
+                      "neutral": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 12.3
+                      },
+                      "mixed": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 7.0
+                      }
+                    }
+                  }
+                }
+              },
+              "content_analyzed": {
+                "type": "integer",
+                "description": "Number of content pieces analyzed",
+                "example": 150
+              },
+              "detailed_results": {
+                "type": "array",
+                "description": "Sample of detailed sentiment analysis results",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "example": "YouTube"
+                    },
+                    "sentiment": {
+                      "type": "string",
+                      "example": "positive"
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "format": "float",
+                      "example": 0.92
+                    },
+                    "text": {
+                      "type": "string",
+                      "example": "Great camera quality on this phone!"
+                    }
+                  }
+                }
+              },
+              "storage_location": {
+                "type": "string",
+                "example": "DynamoDB table: products"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2024-01-15T10:30:00Z"
+              }
+            }
+          }
+        }
+      },
+      "ActionItemsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "action_id": {
+                "type": "string",
+                "description": "Unique identifier for this action items generation",
+                "example": "action_123456"
+              },
+              "product_id": {
+                "type": "string",
+                "example": "prod_123456"
+              },
+              "user_id": {
+                "type": "string",
+                "example": "user_789"
+              },
+              "source_analysis_id": {
+                "type": "string",
+                "description": "ID of the sentiment analysis this is based on",
+                "example": "analysis_123"
+              },
+              "search_query": {
+                "type": "string",
+                "example": "iPhone 15 Pro"
+              },
+              "action_items": {
+                "type": "object",
+                "properties": {
+                  "high_priority": {
+                    "type": "array",
+                    "description": "Immediate actions (1-2 weeks)",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Address camera quality concerns in customer service responses",
+                      "Launch targeted social media campaign highlighting positive reviews"
+                    ]
+                  },
+                  "medium_priority": {
+                    "type": "array",
+                    "description": "Short-term strategy (1-3 months)",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Improve product photography to better showcase features",
+                      "Develop response templates for common customer concerns"
+                    ]
+                  },
+                  "low_priority": {
+                    "type": "array",
+                    "description": "Long-term planning (3-12 months)",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Consider feature enhancements based on user feedback",
+                      "Explore partnership opportunities with influencers"
+                    ]
+                  },
+                  "content_recommendations": {
+                    "type": "array",
+                    "description": "Content and messaging recommendations",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Emphasize camera capabilities in marketing materials",
+                      "Create tutorial content addressing common user questions"
+                    ]
+                  },
+                  "product_improvements": {
+                    "type": "array",
+                    "description": "Product improvement suggestions",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Enhance low-light photography performance",
+                      "Improve user interface for camera settings"
+                    ]
+                  }
+                }
+              },
+              "generated_insights": {
+                "type": "string",
+                "description": "Raw insights generated by Bedrock",
+                "example": "Based on the sentiment analysis, the product shows strong positive reception overall..."
+              },
+              "storage_location": {
+                "type": "string",
+                "example": "DynamoDB table: products"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2024-01-15T10:30:00Z"
+              }
+            }
+          }
+        }
+      },
+      "ComprehensiveAnalysisResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "analysis_id": {
+                "type": "string",
+                "description": "Unique identifier for this comprehensive analysis",
+                "example": "comp_123456"
+              },
+              "product_id": {
+                "type": "string",
+                "example": "prod_123456"
+              },
+              "user_id": {
+                "type": "string",
+                "example": "user_789"
+              },
+              "search_query": {
+                "type": "string",
+                "example": "iPhone 15 Pro"
+              },
+              "product_name": {
+                "type": "string",
+                "example": "iPhone 15 Pro Max"
+              },
+              "sentiment_analysis": {
+                "$ref": "#/components/schemas/SentimentAnalysisResponse/properties/data"
+              },
+              "action_items": {
+                "$ref": "#/components/schemas/ActionItemsResponse/properties/data"
+              },
+              "comprehensive_insights": {
+                "type": "object",
+                "properties": {
+                  "overall_sentiment": {
+                    "type": "string",
+                    "enum": ["positive", "negative", "neutral", "mixed"],
+                    "example": "positive"
+                  },
+                  "priority_actions": {
+                    "type": "array",
+                    "description": "Top priority actions from the analysis",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Address camera quality concerns immediately",
+                      "Capitalize on positive social media momentum"
+                    ]
+                  },
+                  "key_insights": {
+                    "type": "array",
+                    "description": "Key insights combining sentiment and action data",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Strong positive sentiment around camera quality",
+                      "Some concerns about battery life need addressing",
+                      "Social media engagement is high for positive content"
+                    ]
+                  }
+                }
+              },
+              "storage_location": {
+                "type": "string",
+                "example": "DynamoDB table: products"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2024-01-15T10:30:00Z"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message describing what went wrong",
+            "example": "Sentiment analysis failed: Invalid search query"
+          }
+        }
+      }
+    }
+  }
+}

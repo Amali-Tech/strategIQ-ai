@@ -1,15 +1,15 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Data Enrichment Action Group",
-    "version": "1.0.0",
-    "description": "Action group for enriching marketing campaign data using YouTube API and trend analysis"
+    "title": "Data Enrichment API",
+    "description": "Enriches campaign data by searching YouTube and other sources for content related to products/brands. Provides comprehensive content analysis, trending topics, and actionable marketing insights.",
+    "version": "1.0.0"
   },
   "paths": {
     "/enrich-campaign-data": {
       "post": {
-        "summary": "Enrich campaign data with YouTube insights",
-        "description": "Takes a search query and enriches marketing campaign data by searching YouTube for relevant content, analyzing trends, and providing actionable insights",
+        "summary": "Enrich campaign data with external content",
+        "description": "Searches YouTube and other content sources for videos, articles, and social media posts related to a search query. Extracts metadata, engagement metrics, and generates content insights for marketing campaigns.",
         "operationId": "enrich_campaign_data",
         "requestBody": {
           "required": true,
@@ -17,38 +17,42 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["search_query"],
                 "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the product/campaign"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "User identifier for data ownership",
+                    "default": "anonymous"
+                  },
                   "search_query": {
                     "type": "string",
-                    "description": "The search query to use for finding relevant YouTube content. Should be based on product name, category, and target audience",
-                    "example": "wireless headphones review 2024 noise cancelling",
-                    "minLength": 3,
-                    "maxLength": 200
+                    "description": "Search query for content discovery (e.g., 'wireless headphones reviews')"
                   },
                   "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of YouTube search results to retrieve and analyze",
-                    "example": 15,
-                    "minimum": 5,
-                    "maximum": 50,
-                    "default": 10
+                    "description": "Maximum number of results to retrieve (default: 10)",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 50
                   },
                   "content_type": {
                     "type": "string",
-                    "description": "Type of YouTube content to search for",
+                    "description": "Type of content to search for",
                     "enum": ["all", "videos", "channels", "playlists"],
-                    "example": "videos",
                     "default": "all"
                   }
-                }
+                },
+                "required": ["product_id", "user_id", "search_query"]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Successfully enriched campaign data with YouTube insights",
+            "description": "Data enrichment completed successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -56,91 +60,70 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "description": "Indicates if the enrichment was successful",
                       "example": true
                     },
-                    "enrichment_id": {
-                      "type": "string",
-                      "description": "Unique identifier for this enrichment operation",
-                      "example": "enrich_12345_10"
-                    },
-                    "search_query": {
-                      "type": "string",
-                      "description": "The search query that was used",
-                      "example": "wireless headphones review 2024"
-                    },
-                    "results_count": {
-                      "type": "integer",
-                      "description": "Number of YouTube results found and analyzed",
-                      "example": 15
-                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "description": "Product identifier"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "description": "User identifier"
+                        },
+                        "enrichment_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this enrichment operation"
+                        },
+                        "search_query": {
+                          "type": "string",
+                          "description": "The search query that was used"
+                        },
+                        "results_count": {
+                          "type": "integer",
+                          "description": "Number of content pieces found and processed"
+                        },
                     "enrichment_data": {
                       "type": "object",
-                      "description": "Structured data from YouTube analysis",
+                      "description": "Structured enrichment data",
                       "properties": {
                         "search_query": {
                           "type": "string",
-                          "description": "Original search query"
+                          "description": "The original search query"
                         },
                         "total_results": {
                           "type": "integer",
-                          "description": "Total available results on YouTube"
+                          "description": "Total results available from the search"
                         },
                         "videos": {
                           "type": "array",
-                          "description": "Array of analyzed YouTube videos",
+                          "description": "YouTube video results",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "video_id": {
-                                "type": "string",
-                                "description": "YouTube video ID"
-                              },
-                              "title": {
-                                "type": "string",
-                                "description": "Video title"
-                              },
-                              "description": {
-                                "type": "string",
-                                "description": "Video description"
-                              },
-                              "channel_title": {
-                                "type": "string",
-                                "description": "Channel name"
-                              },
-                              "published_at": {
-                                "type": "string",
-                                "description": "Publication date"
-                              },
-                              "thumbnail_url": {
-                                "type": "string",
-                                "description": "Video thumbnail URL"
-                              },
-                              "relevance_score": {
-                                "type": "integer",
-                                "description": "Calculated relevance score"
-                              }
+                              "video_id": { "type": "string" },
+                              "title": { "type": "string" },
+                              "description": { "type": "string" },
+                              "channel_title": { "type": "string" },
+                              "published_at": { "type": "string" },
+                              "thumbnail_url": { "type": "string" },
+                              "relevance_score": { "type": "number" }
                             }
                           }
                         },
                         "channels": {
                           "type": "array",
-                          "description": "Array of relevant YouTube channels",
+                          "description": "YouTube channel results",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "channel_id": {
-                                "type": "string",
-                                "description": "YouTube channel ID"
-                              },
-                              "channel_title": {
-                                "type": "string",
-                                "description": "Channel name"
-                              },
-                              "description": {
-                                "type": "string",
-                                "description": "Channel description"
-                              }
+                              "channel_id": { "type": "string" },
+                              "channel_title": { "type": "string" },
+                              "description": { "type": "string" },
+                              "published_at": { "type": "string" },
+                              "thumbnail_url": { "type": "string" }
                             }
                           }
                         },
@@ -150,69 +133,47 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "keyword": {
-                                "type": "string",
-                                "description": "Trending keyword"
-                              },
-                              "frequency": {
-                                "type": "integer",
-                                "description": "Frequency of the keyword"
-                              }
+                              "keyword": { "type": "string" },
+                              "frequency": { "type": "integer" }
                             }
                           }
                         },
                         "content_themes": {
                           "type": "array",
-                          "description": "Common themes found in the content",
+                          "description": "Common themes identified in content",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "theme": {
-                                "type": "string",
-                                "description": "Content theme"
-                              },
-                              "count": {
-                                "type": "integer",
-                                "description": "Number of videos with this theme"
-                              }
+                              "theme": { "type": "string" },
+                              "count": { "type": "integer" }
                             }
                           }
                         },
                         "engagement_patterns": {
                           "type": "object",
-                          "description": "Analysis of engagement patterns",
+                          "description": "Patterns in content engagement and performance",
                           "properties": {
                             "optimal_title_length": {
                               "type": "object",
                               "properties": {
-                                "average": {
-                                  "type": "number",
-                                  "description": "Average title length"
-                                },
-                                "recommendation": {
-                                  "type": "string",
-                                  "description": "Title length recommendation"
-                                }
+                                "average": { "type": "number" },
+                                "recommendation": { "type": "string" }
                               }
                             },
                             "popular_posting_times": {
                               "type": "object",
-                              "description": "Analysis of popular posting times"
+                              "properties": {
+                                "pattern": { "type": "string" },
+                                "recommendation": { "type": "string" }
+                              }
                             },
                             "successful_content_formats": {
                               "type": "array",
-                              "description": "Successful content formats identified",
                               "items": {
                                 "type": "object",
                                 "properties": {
-                                  "format": {
-                                    "type": "string",
-                                    "description": "Content format"
-                                  },
-                                  "count": {
-                                    "type": "integer",
-                                    "description": "Frequency of this format"
-                                  }
+                                  "format": { "type": "string" },
+                                  "count": { "type": "integer" }
                                 }
                               }
                             }
@@ -222,91 +183,55 @@
                     },
                     "insights": {
                       "type": "object",
-                      "description": "Actionable insights generated from the enrichment data",
+                      "description": "Actionable insights generated from the data",
                       "properties": {
                         "content_opportunities": {
                           "type": "array",
-                          "description": "Content creation opportunities identified",
+                          "description": "Content creation opportunities",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "opportunity": {
-                                "type": "string",
-                                "description": "Description of the opportunity"
-                              },
-                              "relevance": {
-                                "type": "integer",
-                                "description": "Relevance score"
-                              },
-                              "reasoning": {
-                                "type": "string",
-                                "description": "Why this is an opportunity"
-                              }
+                              "opportunity": { "type": "string" },
+                              "relevance": { "type": "integer" },
+                              "reasoning": { "type": "string" }
                             }
                           }
                         },
                         "trending_topics": {
                           "type": "array",
-                          "description": "Currently trending topics in the space",
+                          "description": "Trending topics identified",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "topic": {
-                                "type": "string",
-                                "description": "Trending topic"
-                              },
-                              "prevalence": {
-                                "type": "integer",
-                                "description": "How prevalent the topic is"
-                              },
-                              "recommendation": {
-                                "type": "string",
-                                "description": "How to leverage this trend"
-                              }
+                              "topic": { "type": "string" },
+                              "prevalence": { "type": "integer" },
+                              "recommendation": { "type": "string" }
                             }
                           }
                         },
                         "audience_preferences": {
                           "type": "array",
-                          "description": "Audience preferences identified from the data",
+                          "description": "Audience preferences and behaviors",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "preference": {
-                                "type": "string",
-                                "description": "Audience preference"
-                              },
-                              "detail": {
-                                "type": "string",
-                                "description": "Details about the preference"
-                              },
-                              "impact": {
-                                "type": "string",
-                                "description": "Expected impact level"
-                              }
+                              "preference": { "type": "string" },
+                              "detail": { "type": "string" },
+                              "impact": { "type": "string" }
                             }
                           }
                         },
                         "competitive_landscape": {
                           "type": "array",
-                          "description": "Analysis of the competitive landscape",
+                          "description": "Competitive analysis insights",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "insight": {
-                                "type": "string",
-                                "description": "Competitive insight"
-                              },
-                              "recommendation": {
-                                "type": "string",
-                                "description": "Recommended action"
-                              },
+                              "insight": { "type": "string" },
+                              "recommendation": { "type": "string" },
                               "channels": {
                                 "type": "array",
-                                "description": "Relevant competitor channels",
-                                "items": {
-                                  "type": "string"
-                                }
+                                "items": { "type": "string" }
                               }
                             }
                           }
@@ -315,8 +240,7 @@
                     },
                     "timestamp": {
                       "type": "string",
-                      "description": "Timestamp of the enrichment operation",
-                      "example": "2024-10-17T10:30:00Z"
+                      "description": "Timestamp of the enrichment operation"
                     }
                   }
                 }
@@ -324,7 +248,7 @@
             }
           },
           "400": {
-            "description": "Bad request - invalid or missing parameters",
+            "description": "Bad request - missing required parameters or enrichment failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -335,30 +259,7 @@
                       "example": false
                     },
                     "error": {
-                      "type": "string",
-                      "description": "Error message describing what went wrong",
-                      "example": "search_query parameter is required"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "description": "Internal error message",
-                      "example": "YouTube API request failed"
+                      "type": "string"
                     }
                   }
                 }

@@ -359,10 +359,30 @@ def process_response_stream(stream):
 def structure_campaign_response(parsed_response):
     """
     Ensure the campaign response has the expected structure for the frontend.
+    Now validates that agent actually called action groups and returned real data.
     """
-    # Check if it's the new comprehensive structure
+    # Check if it's the new comprehensive structure with actual data
     if all(key in parsed_response for key in ['product', 'content_ideas', 'campaigns', 'generated_assets']):
-        print("Agent returned comprehensive structure - using as-is")
+        print("Agent returned comprehensive structure - validating data quality")
+        
+        # Validate that critical fields have real data (not empty or placeholder)
+        product = parsed_response.get('product', {})
+        image_labels = product.get('image', {}).get('labels', [])
+        related_videos = parsed_response.get('related_youtube_videos', [])
+        market_trends = parsed_response.get('market_trends', {})
+        trending_keywords = market_trends.get('trending_keywords', [])
+        
+        # Check for indicators that agent didn't call action groups properly
+        if not image_labels:
+            print("WARNING: No image labels found - agent may not have called image-analysis action group")
+        
+        if not related_videos:
+            print("ERROR: No related YouTube videos found - agent MUST call data-enrichment action group")
+            # Don't fail for now, but log the error
+        
+        if not trending_keywords or trending_keywords == ['quietcomfort', 'best', 'headphones', 'bose', 'sony']:
+            print("WARNING: Trending keywords appear to be generic/default - agent should use data enrichment results")
+        
         return parsed_response
     
     # Check if it's the legacy structure
@@ -374,9 +394,10 @@ def structure_campaign_response(parsed_response):
     if 'content' in parsed_response and isinstance(parsed_response['content'], dict):
         return structure_campaign_response(parsed_response['content'])
     
-    # If it's just text content, try to parse it
+    # If it's just text content, don't create fallback - let it fail
     if 'content' in parsed_response and isinstance(parsed_response['content'], str):
-        return create_fallback_structure(parsed_response['content'])
+        print("ERROR: Agent returned text content instead of structured JSON - this indicates agent malfunction")
+        raise Exception("Agent returned unstructured text instead of JSON - agent did not follow instructions properly")
     
     # Return the response as-is if it's already structured
     return parsed_response
@@ -429,94 +450,11 @@ def extract_and_structure_json(text_content):
 
 def create_fallback_structure(text_content):
     """
-    Create a structured response from text content when JSON parsing fails.
-    This ensures the frontend always gets the expected structure.
+    DEPRECATED: This function should not be used anymore.
+    Agent must return proper JSON structure - no more fallbacks for text content.
     """
-    # Extract key information from text using simple pattern matching
-    lines = text_content.split('\n')
-    
-    # Basic fallback structure
-    fallback = {
-        'campaign_strategy': {
-            'overview': 'AI-generated marketing campaign based on product analysis',
-            'objectives': ['brand_awareness', 'engagement'],
-            'target_audience_insights': 'General target audience based on product category'
-        },
-        'visual_insights': {
-            'primary_visual_elements': ['product', 'branding'],
-            'color_scheme': ['primary', 'secondary'],
-            'visual_themes': ['modern', 'clean'],
-            'detected_objects': ['product']
-        },
-        'platform_content': {
-            'instagram': {
-                'content_themes': ['product_showcase', 'lifestyle'],
-                'recommended_formats': ['image_post', 'story'],
-                'sample_post': 'Check out our amazing product! #product #lifestyle',
-                'hashtags': ['#product', '#lifestyle', '#quality'],
-                'posting_schedule': 'Peak engagement times: 12-3pm, 7-9pm'
-            },
-            'tiktok': {
-                'content_themes': ['product_demo', 'trending'],
-                'recommended_formats': ['short_video', 'tutorial'],
-                'sample_post': 'Product demo video showing key features',
-                'hashtags': ['#productdemo', '#tutorial', '#trending'],
-                'trending_sounds': ['popular_audio_1', 'trending_sound_2']
-            },
-            'youtube': {
-                'content_themes': ['product_review', 'educational'],
-                'recommended_formats': ['review_video', 'tutorial'],
-                'sample_post': 'Comprehensive product review and tutorial',
-                'video_ideas': ['unboxing', 'tutorial', 'comparison'],
-                'seo_keywords': ['product review', 'tutorial', 'how to']
-            }
-        },
-        'market_trends': {
-            'trending_keywords': ['product', 'review', 'quality'],
-            'competitor_insights': ['market_analysis', 'competitive_advantage'],
-            'market_opportunities': ['social_media', 'influencer_marketing'],
-            'seasonal_trends': ['year_round_appeal']
-        },
-        'success_metrics': {
-            'engagement_targets': {
-                'likes': '500-1000 per post',
-                'comments': '50-100 per post',
-                'shares': '25-50 per post'
-            },
-            'reach_goals': {
-                'impressions': '10,000-50,000',
-                'unique_users': '5,000-25,000'
-            },
-            'conversion_metrics': {
-                'click_through_rate': '2-5%',
-                'conversion_rate': '1-3%'
-            }
-        }
-    }
-    
-    # Try to extract some information from the text content
-    text_lower = text_content.lower()
-    
-    # Extract platform mentions and enhance platform_content
-    platforms = ['instagram', 'tiktok', 'youtube', 'facebook', 'twitter']
-    for platform in platforms:
-        if platform in text_lower:
-            # Find content related to this platform
-            platform_lines = [line for line in lines if platform in line.lower()]
-            if platform_lines and platform in fallback['platform_content']:
-                fallback['platform_content'][platform]['sample_post'] = platform_lines[0][:200]
-    
-    # Extract keywords and hashtags
-    hashtag_pattern = r'#\w+'
-    hashtags = re.findall(hashtag_pattern, text_content)
-    if hashtags:
-        for platform in fallback['platform_content']:
-            fallback['platform_content'][platform]['hashtags'] = hashtags[:5]
-    
-    # Store original content for reference
-    fallback['_original_content'] = text_content
-    
-    return fallback
+    print("ERROR: create_fallback_structure called - this should not happen with updated agent instructions")
+    raise Exception(f"Agent returned unstructured text instead of JSON. Agent malfunction detected. Text content: {text_content[:200]}...")
 
 def create_campaign_status(campaign_id, status, context_data):
     """
@@ -639,35 +577,13 @@ def create_product_section(request_data):
     return product_section
 
 def create_content_ideas_from_platform_content(platform_content):
-    """Convert platform content into content ideas format with meaningful data."""
+    """Convert platform content into content ideas format - should only be used if agent provided real platform content."""
     content_ideas = []
     
-    # Default content ideas if platform_content is empty
+    # Only process if platform_content has actual data from agent - no fallbacks
     if not platform_content:
-        default_ideas = [
-            {
-                "platform": "Instagram",
-                "topic": "Product showcase and lifestyle integration",
-                "engagement_score": 88,
-                "caption": "Discover how our product transforms your daily routine! ✨ #ProductShowcase #Lifestyle #Innovation",
-                "hashtags": ["#ProductShowcase", "#Lifestyle", "#Innovation", "#Quality", "#Design"]
-            },
-            {
-                "platform": "TikTok",
-                "topic": "Quick product demo and benefits",
-                "engagement_score": 85,
-                "caption": "30-second transformation! See how our product makes a difference 🔥 #ProductDemo #Trending #MustHave",
-                "hashtags": ["#ProductDemo", "#Trending", "#MustHave", "#Viral", "#GameChanger"]
-            },
-            {
-                "platform": "YouTube",
-                "topic": "In-depth product review and comparison",
-                "engagement_score": 82,
-                "caption": "Complete review: Is this product worth the hype? Watch our detailed analysis and comparison with competitors.",
-                "hashtags": ["#ProductReview", "#Comparison", "#Honest", "#Analysis", "#BuyingGuide"]
-            }
-        ]
-        return default_ideas
+        print("ERROR: Agent did not provide platform_content - this indicates the agent failed to call action groups properly")
+        return []
     
     # Generate content ideas from platform content
     for platform, content in platform_content.items():
@@ -745,47 +661,14 @@ def create_campaign_sections_from_legacy(legacy_response):
     return campaigns
 
 def create_campaign_sections(agent_data):
-    """Create detailed campaign sections from agent data with meaningful defaults."""
+    """Create detailed campaign sections from agent data - should only be used if agent provided real data."""
     campaigns = []
     platform_content = agent_data.get('platform_content', {})
     
-    # Default campaigns if no specific data
+    # Only process if platform_content has actual data from agent - no fallbacks
     if not platform_content:
-        default_campaigns = [
-            {
-                "name": "Brand Awareness Campaign",
-                "duration": "4 weeks",
-                "posts_per_week": 3,
-                "platforms": ["Instagram", "TikTok", "YouTube"],
-                "calendar": {
-                    "Week 1": "Launch campaign with product introduction and key features showcase",
-                    "Week 2": "Build engagement through user-generated content and testimonials",
-                    "Week 3": "Educational content focusing on product benefits and use cases",
-                    "Week 4": "Conversion-focused content with special offers and clear calls-to-action"
-                },
-                "adaptations": {
-                    "Instagram": "High-quality visuals with stories and reels showcasing product lifestyle integration",
-                    "TikTok": "Short, engaging videos with trending sounds and creative product demonstrations",
-                    "YouTube": "In-depth tutorials and reviews building trust and authority in the space"
-                }
-            },
-            {
-                "name": "Engagement & Community Building Campaign",
-                "duration": "3 weeks",
-                "posts_per_week": 4,
-                "platforms": ["Instagram", "Facebook"],
-                "calendar": {
-                    "Week 1": "Community challenges and interactive content to boost engagement",
-                    "Week 2": "Behind-the-scenes content and brand story sharing",
-                    "Week 3": "User-generated content campaigns and community highlights"
-                },
-                "adaptations": {
-                    "Instagram": "Interactive stories, polls, and user-generated content campaigns",
-                    "Facebook": "Community discussions, live sessions, and detailed posts with engagement focus"
-                }
-            }
-        ]
-        return default_campaigns
+        print("ERROR: Agent did not provide platform_content for campaign creation - this indicates action groups were not called properly")
+        return []
     
     # Create campaign from platform content
     campaign = {
@@ -826,7 +709,7 @@ def create_campaign_sections(agent_data):
     return campaigns
 
 def create_generated_assets_section(agent_data):
-    """Create generated assets section with prompts and scripts, ensuring meaningful defaults."""
+    """Create generated assets section with prompts and scripts - should only be used if agent provided real data."""
     visual_insights = agent_data.get('visual_insights', {})
     platform_content = agent_data.get('platform_content', {})
     
@@ -837,7 +720,7 @@ def create_generated_assets_section(agent_data):
         "blog_outlines": []
     }
     
-    # Create image prompts from visual insights or defaults
+    # Only create assets if we have real visual insights from agent
     if visual_insights and visual_insights.get('visual_themes'):
         themes = visual_insights.get('visual_themes', [])
         elements = visual_insights.get('primary_visual_elements', [])
@@ -847,15 +730,10 @@ def create_generated_assets_section(agent_data):
             prompt = f"A {theme.lower()} styled image featuring {element}, professional photography with modern aesthetic and brand-consistent styling"
             assets["image_prompts"].append(prompt)
     else:
-        # Default image prompts
-        default_prompts = [
-            "Professional product photography with clean background and optimal lighting",
-            "Lifestyle image showing product in real-world usage scenario",
-            "Creative marketing visual with bold colors and engaging composition"
-        ]
-        assets["image_prompts"] = default_prompts
+        print("WARNING: No visual insights provided by agent - image prompts will be empty")
+        assets["image_prompts"] = []
     
-    # Create video scripts from platform content or defaults
+    # Create video scripts from platform content only if provided by agent
     if platform_content:
         youtube_content = platform_content.get('youtube', {})
         video_ideas = youtube_content.get('video_ideas', [])
@@ -869,65 +747,49 @@ def create_generated_assets_section(agent_data):
                 }
                 assets["video_scripts"].append(script)
         else:
-            # Default video scripts
-            default_scripts = [
-                {
-                    "type": "Short form video",
-                    "content": "Welcome! In just 30 seconds, see how our product transforms your experience. Quick demo, key benefits, and clear call-to-action. Perfect for social media engagement!"
-                },
-                {
-                    "type": "Long form video",
-                    "content": "Complete guide covering product features, benefits, and real-world applications. Include user testimonials, detailed demonstrations, and comprehensive comparison with alternatives."
-                }
-            ]
-            assets["video_scripts"] = default_scripts
+            print("WARNING: No video ideas provided by agent in platform content")
+            assets["video_scripts"] = []
     else:
-        # Default video scripts when no platform content
-        default_scripts = [
+        print("WARNING: No platform content provided by agent - video scripts will be empty")
+        assets["video_scripts"] = []
+    
+    # Email templates and blog outlines - only provide if we have actual agent data
+    if platform_content or visual_insights:
+        assets["email_templates"] = [
             {
-                "type": "Short form video",
-                "content": "Engaging 30-second video showcasing key product benefits with compelling visuals and clear call-to-action"
+                "subject": "Your Marketing Campaign is Ready to Launch!",
+                "body": "Hi [Name],\n\nGreat news! We've created a comprehensive marketing strategy tailored specifically for your product. The campaign includes platform-specific content, engagement strategies, and conversion-focused messaging.\n\nKey highlights:\n• Multi-platform content calendar\n• Targeted audience insights\n• Performance tracking metrics\n\nReady to see amazing results? Let's launch your campaign today!\n\nBest regards,\nYour Marketing Team"
             },
             {
-                "type": "Long form video",
-                "content": "Comprehensive 3-5 minute video with product demonstration, user testimonials, and detailed feature breakdown"
+                "subject": "Boost Your Brand with These Content Ideas",
+                "body": "Hello [Name],\n\nWe've curated exclusive content ideas that will elevate your brand presence and drive meaningful engagement with your audience.\n\nInside you'll find:\n✓ Platform-specific content strategies\n✓ Trending hashtags and keywords\n✓ Engagement optimization tips\n✓ Conversion-focused call-to-actions\n\nStart implementing these strategies today and watch your brand grow!\n\nCheers,\nMarketing Strategy Team"
             }
         ]
-        assets["video_scripts"] = default_scripts
-    
-    # Create email templates with meaningful content
-    assets["email_templates"] = [
-        {
-            "subject": "Your Marketing Campaign is Ready to Launch!",
-            "body": "Hi [Name],\n\nGreat news! We've created a comprehensive marketing strategy tailored specifically for your product. The campaign includes platform-specific content, engagement strategies, and conversion-focused messaging.\n\nKey highlights:\n• Multi-platform content calendar\n• Targeted audience insights\n• Performance tracking metrics\n\nReady to see amazing results? Let's launch your campaign today!\n\nBest regards,\nYour Marketing Team"
-        },
-        {
-            "subject": "Boost Your Brand with These Content Ideas",
-            "body": "Hello [Name],\n\nWe've curated exclusive content ideas that will elevate your brand presence and drive meaningful engagement with your audience.\n\nInside you'll find:\n✓ Platform-specific content strategies\n✓ Trending hashtags and keywords\n✓ Engagement optimization tips\n✓ Conversion-focused call-to-actions\n\nStart implementing these strategies today and watch your brand grow!\n\nCheers,\nMarketing Strategy Team"
-        }
-    ]
-    
-    # Create blog outlines with valuable content
-    assets["blog_outlines"] = [
-        {
-            "title": "The Complete Guide to Modern Marketing Success",
-            "points": [
-                "Understanding your target audience and their preferences",
-                "Creating platform-specific content that resonates",
-                "Measuring campaign performance and optimizing for results",
-                "Building long-term brand loyalty through consistent engagement"
-            ]
-        },
-        {
-            "title": "5 Proven Strategies to Boost Your Brand Engagement",
-            "points": [
-                "Leverage user-generated content to build authenticity",
-                "Master the art of storytelling across different platforms",
-                "Use data-driven insights to optimize content timing",
-                "Create interactive experiences that encourage participation"
-            ]
-        }
-    ]
+        
+        assets["blog_outlines"] = [
+            {
+                "title": "The Complete Guide to Modern Marketing Success",
+                "points": [
+                    "Understanding your target audience and their preferences",
+                    "Creating platform-specific content that resonates",
+                    "Measuring campaign performance and optimizing for results",
+                    "Building long-term brand loyalty through consistent engagement"
+                ]
+            },
+            {
+                "title": "5 Proven Strategies to Boost Your Brand Engagement",
+                "points": [
+                    "Leverage user-generated content to build authenticity",
+                    "Master the art of storytelling across different platforms",
+                    "Use data-driven insights to optimize content timing",
+                    "Create interactive experiences that encourage participation"
+                ]
+            }
+        ]
+    else:
+        print("WARNING: No agent data provided - email templates and blog outlines will be empty")
+        assets["email_templates"] = []
+        assets["blog_outlines"] = []
     
     return assets
 
@@ -973,6 +835,7 @@ def create_comprehensive_fallback_structure(request_data):
 def create_comprehensive_campaign_response(agent_response, request_data, campaign_id):
     """
     Create the comprehensive campaign response structure from agent response.
+    Now requires agent to provide real data - no more fallbacks for critical sections.
     
     Args:
         agent_response: The structured response from the Bedrock agent
@@ -991,42 +854,61 @@ def create_comprehensive_campaign_response(agent_response, request_data, campaig
                 "status": "completed",
                 "message": "Comprehensive campaign response created successfully."
             })
-            # Ensure analytics is present
+            
+            # Only add analytics if not provided by agent
             if 'analytics' not in comprehensive_response:
                 comprehensive_response['analytics'] = create_analytics_data()
+                
+            # Validate critical data is present
+            if not comprehensive_response.get('related_youtube_videos'):
+                print("ERROR: Agent did not provide related YouTube videos - this indicates data enrichment was not called")
+                comprehensive_response['message'] = "Campaign created but missing data enrichment results."
+                
             return comprehensive_response
         
         # Otherwise, create comprehensive response structure from legacy format
+        # But only if we have real platform content from agent
+        platform_content = agent_response.get('platform_content', {})
+        market_trends = agent_response.get('market_trends', {})
+        
+        if not platform_content:
+            print("ERROR: Agent did not provide platform_content - this indicates action groups were not called properly")
+            raise Exception("Agent failed to call required action groups - no platform content available")
+        
+        if not market_trends:
+            print("ERROR: Agent did not provide market_trends - this indicates data enrichment was not called")
+            raise Exception("Agent failed to call data enrichment - no market trends available")
+        
         comprehensive_response = {
             "campaign_id": campaign_id,
             "status": "completed",
-            "message": "Comprehensive campaign response created successfully.",
+            "message": "Comprehensive campaign response created from agent data.",
             "product": agent_response.get('product', create_product_section(request_data)),
-            "content_ideas": agent_response.get('content_ideas', create_content_ideas_from_platform_content(agent_response.get('platform_content', {}))),
-            "campaigns": agent_response.get('campaigns', create_campaign_sections(agent_response)),
-            "generated_assets": agent_response.get('generated_assets', create_generated_assets_section(agent_response)),
-            "platform_content": agent_response.get('platform_content', {}),
-            "market_trends": agent_response.get('market_trends', {}),
+            "content_ideas": create_content_ideas_from_platform_content(platform_content),
+            "campaigns": create_campaign_sections(agent_response),
+            "generated_assets": create_generated_assets_section(agent_response),
+            "platform_content": platform_content,
+            "market_trends": market_trends,
             "success_metrics": agent_response.get('success_metrics', {}),
             "analytics": agent_response.get('analytics', create_analytics_data()),
             "related_youtube_videos": agent_response.get('related_youtube_videos', [])
         }
         
+        # Final validation
+        if not comprehensive_response.get('related_youtube_videos'):
+            print("ERROR: Final response missing YouTube videos - agent did not properly integrate data enrichment results")
+            comprehensive_response['message'] = "Campaign created but missing data enrichment integration."
+        
         return comprehensive_response
         
     except Exception as e:
         print(f"Error creating comprehensive campaign response: {str(e)}")
-        # Return fallback structure with all required sections
-        fallback_response = create_comprehensive_fallback_structure(request_data)
-        return {
-            "campaign_id": campaign_id,
-            "status": "completed",
-            "message": "Comprehensive response created with fallback data.",
-            **fallback_response
-        }
+        # Re-raise the exception to force proper error handling instead of returning fallbacks
+        raise Exception(f"Failed to create comprehensive campaign response - agent did not provide required data: {str(e)}")
 
 def create_analytics_data():
-    """Create analytics data for KPI cards."""
+    """Create analytics data for KPI cards - should be based on agent analysis, but fallback allowed for analytics only."""
+    print("WARNING: Using fallback analytics data - agent should provide real market-based analytics")
     return {
         "estimatedReach": random.randint(100000, 500000),
         "projectedEngagement": round(random.uniform(7.5, 12.0), 1),

@@ -11,9 +11,8 @@ variable "environment" {
 }
 
 variable "aws_region" {
-  description = "AWS region for Bedrock model ARNs"
+  description = "AWS region"
   type        = string
-  default     = "eu-west-1"
 }
 
 variable "image_analysis_lambda_arn" {
@@ -78,6 +77,17 @@ variable "bedrock_agent_inference_profile_arn" {
 
 variable "cultural_intelligence_kb_id" {
   description = "Knowledge Base ID for cultural intelligence"
+  type        = string
+  default     = ""
+}
+
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+}
+
+variable "supervisor_agent_alias_id_override" {
+  description = "Override for supervisor agent alias ID (leave empty to use terraform-managed alias)"
   type        = string
   default     = ""
 }

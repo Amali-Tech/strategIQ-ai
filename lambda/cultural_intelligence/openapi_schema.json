@@ -2,15 +2,15 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Cultural Intelligence API",
-    "description": "API for cross-cultural adaptation and market intelligence insights",
+    "description": "Provides cultural market intelligence and content adaptation services using Bedrock Knowledge Bases. Analyzes cultural contexts, market preferences, and generates localized content recommendations for global campaigns.",
     "version": "1.0.0"
   },
   "paths": {
     "/cultural-insights": {
       "post": {
-        "summary": "Get cultural adaptation insights",
-        "description": "Retrieve cultural guidelines and adaptation recommendations for target markets",
-        "operationId": "getCulturalInsights",
+        "summary": "Get cultural insights for campaign adaptation",
+        "description": "Queries cultural intelligence knowledge bases to provide guidelines and recommendations for adapting campaigns across different cultural markets. Results are stored in DynamoDB for campaign tracking.",
+        "operationId": "get_cultural_insights",
         "requestBody": {
           "required": true,
           "content": {
@@ -18,24 +18,33 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the product/campaign"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "User identifier for data ownership",
+                    "default": "anonymous"
+                  },
                   "target_markets": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "List of target markets for cultural adaptation (e.g., ['US', 'China', 'Germany'])"
+                    "description": "List of target markets/countries for analysis"
                   },
                   "campaign_type": {
                     "type": "string",
-                    "description": "Type of marketing campaign (e.g., 'social_media', 'video', 'display', 'influencer')",
+                    "description": "Type of campaign (e.g., 'marketing', 'advertising', 'social')",
                     "default": "general"
                   },
                   "product_category": {
                     "type": "string",
-                    "description": "Product category for context-specific insights (e.g., 'electronics', 'fashion', 'food')"
+                    "description": "Category of the product being promoted"
                   }
                 },
-                "required": ["target_markets"]
+                "required": ["product_id", "target_markets"]
               }
             }
           }
@@ -49,75 +58,88 @@
                   "type": "object",
                   "properties": {
                     "success": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "example": true
                     },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "insights_id": {
-                          "type": "string"
+                        "product_id": {
+                          "type": "string",
+                          "description": "Product identifier"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "description": "User identifier"
                         },
                         "target_markets": {
                           "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
+                          "items": { "type": "string" },
+                          "description": "Markets analyzed"
                         },
                         "cultural_guidelines": {
                           "type": "array",
+                          "description": "Cultural adaptation guidelines",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "guideline": {
-                                "type": "string"
+                              "guideline": { "type": "string" },
+                              "priority": {
+                                "type": "string",
+                                "enum": ["high", "medium", "low"]
                               },
-                              "confidence": {
-                                "type": "number"
-                              },
-                              "source": {
-                                "type": "string"
-                              }
+                              "rationale": { "type": "string" }
                             }
                           }
                         },
                         "adaptation_recommendations": {
                           "type": "array",
+                          "description": "Market-specific adaptation recommendations",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "market": {
-                                "type": "string"
+                              "market": { "type": "string" },
+                              "recommendations": {
+                                "type": "array",
+                                "items": { "type": "string" }
                               },
-                              "recommendation": {
-                                "type": "string"
-                              },
-                              "details": {
-                                "type": "string"
-                              },
-                              "priority": {
-                                "type": "string"
-                              }
+                              "priority": { "type": "string" }
                             }
                           }
                         },
                         "cultural_considerations": {
                           "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "category": {
-                                "type": "string"
-                              },
-                              "consideration": {
-                                "type": "string"
-                              },
-                              "importance": {
-                                "type": "string"
-                              }
-                            }
-                          }
+                          "description": "Key cultural considerations",
+                          "items": { "type": "string" }
+                        },
+                        "storage_location": {
+                          "type": "string",
+                          "description": "DynamoDB storage location"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "Analysis timestamp"
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required parameters or analysis failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
                     }
                   }
                 }
@@ -130,8 +152,8 @@
     "/market-intelligence": {
       "post": {
         "summary": "Get market-specific intelligence",
-        "description": "Retrieve market-specific insights, demographics, and preferences",
-        "operationId": "getMarketIntelligence",
+        "description": "Retrieves detailed market intelligence for a specific target market, including demographic data, cultural preferences, platform preferences, and seasonal considerations. Data is stored in DynamoDB for future reference.",
+        "operationId": "get_market_intelligence",
         "requestBody": {
           "required": true,
           "content": {
@@ -139,13 +161,29 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the product/campaign"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "User identifier for data ownership",
+                    "default": "anonymous"
+                  },
                   "target_market": {
                     "type": "string",
-                    "description": "Target market for intelligence gathering (e.g., 'US', 'China', 'Germany')"
+                    "description": "Single target market/country for detailed analysis"
                   },
                   "intelligence_type": {
                     "type": "string",
-                    "description": "Type of intelligence needed (e.g., 'demographic', 'cultural', 'platform', 'seasonal')",
+                    "description": "Type of intelligence needed",
+                    "enum": [
+                      "general",
+                      "demographic",
+                      "cultural",
+                      "platform",
+                      "seasonal"
+                    ],
                     "default": "general"
                   },
                   "focus_areas": {
@@ -153,10 +191,10 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Specific areas of focus (e.g., ['social_media', 'demographics', 'holidays'])"
+                    "description": "Specific areas to focus the intelligence gathering"
                   }
                 },
-                "required": ["target_market"]
+                "required": ["product_id", "target_market"]
               }
             }
           }
@@ -170,69 +208,83 @@
                   "type": "object",
                   "properties": {
                     "success": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "example": true
                     },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "intelligence_id": {
-                          "type": "string"
+                        "product_id": {
+                          "type": "string",
+                          "description": "Product identifier"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "description": "User identifier"
                         },
                         "target_market": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Market analyzed"
                         },
                         "market_insights": {
                           "type": "array",
+                          "description": "Structured market insights",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "insight": {
-                                "type": "string"
-                              },
-                              "relevance": {
-                                "type": "number"
-                              },
-                              "category": {
-                                "type": "string"
-                              }
+                              "insight": { "type": "string" },
+                              "relevance": { "type": "number" },
+                              "category": { "type": "string" }
                             }
                           }
                         },
                         "demographic_data": {
-                          "type": "object"
+                          "type": "object",
+                          "description": "Demographic information"
                         },
                         "cultural_preferences": {
                           "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "preference": {
-                                "type": "string"
-                              },
-                              "strength": {
-                                "type": "string"
-                              }
-                            }
-                          }
+                          "description": "Cultural preferences and values",
+                          "items": { "type": "string" }
                         },
                         "platform_preferences": {
-                          "type": "object"
+                          "type": "object",
+                          "description": "Social media platform preferences",
+                          "additionalProperties": { "type": "number" }
                         },
                         "seasonal_considerations": {
                           "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "event": {
-                                "type": "string"
-                              },
-                              "relevance": {
-                                "type": "number"
-                              }
-                            }
-                          }
+                          "description": "Seasonal and holiday considerations",
+                          "items": { "type": "string" }
+                        },
+                        "storage_location": {
+                          "type": "string",
+                          "description": "DynamoDB storage location"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "Analysis timestamp"
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required parameters or analysis failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
                     }
                   }
                 }
@@ -244,9 +296,9 @@
     },
     "/adapt-content": {
       "post": {
-        "summary": "Adapt campaign content for target markets",
-        "description": "Get cultural and market-specific adaptations for campaign content",
-        "operationId": "adaptCampaignContent",
+        "summary": "Adapt campaign content for multiple markets",
+        "description": "Analyzes original campaign content and generates market-specific adaptations based on cultural intelligence and market preferences. Provides comprehensive adaptation recommendations across multiple target markets.",
+        "operationId": "adapt_campaign_content",
         "requestBody": {
           "required": true,
           "content": {
@@ -254,22 +306,26 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the product/campaign"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "User identifier for data ownership",
+                    "default": "anonymous"
+                  },
                   "content": {
                     "type": "object",
-                    "description": "Original campaign content to be adapted",
+                    "description": "Original campaign content to adapt",
                     "properties": {
-                      "headline": {
-                        "type": "string"
+                      "headline": { "type": "string" },
+                      "body": { "type": "string" },
+                      "images": {
+                        "type": "array",
+                        "items": { "type": "string" }
                       },
-                      "description": {
-                        "type": "string"
-                      },
-                      "imagery": {
-                        "type": "object"
-                      },
-                      "call_to_action": {
-                        "type": "string"
-                      }
+                      "call_to_action": { "type": "string" }
                     }
                   },
                   "target_markets": {
@@ -277,47 +333,61 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "List of target markets for content adaptation"
+                    "description": "List of markets to adapt content for"
                   },
                   "content_type": {
                     "type": "string",
-                    "description": "Type of content being adapted (e.g., 'social_post', 'video_ad', 'display_banner')",
+                    "description": "Type of content being adapted",
+                    "enum": [
+                      "social",
+                      "advertising",
+                      "email",
+                      "website",
+                      "video"
+                    ],
                     "default": "general"
                   }
                 },
-                "required": ["content", "target_markets"]
+                "required": ["product_id", "content", "target_markets"]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Content adaptation recommendations provided",
+            "description": "Content adaptation completed successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "success": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "example": true
                     },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "adaptation_id": {
-                          "type": "string"
+                        "product_id": {
+                          "type": "string",
+                          "description": "Product identifier"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "description": "User identifier"
                         },
                         "original_content": {
-                          "type": "object"
+                          "type": "object",
+                          "description": "The original content provided"
                         },
                         "target_markets": {
                           "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
+                          "items": { "type": "string" },
+                          "description": "Markets content was adapted for"
                         },
                         "market_adaptations": {
                           "type": "object",
+                          "description": "Adaptations for each market",
                           "additionalProperties": {
                             "type": "object",
                             "properties": {
@@ -326,15 +396,9 @@
                                 "items": {
                                   "type": "object",
                                   "properties": {
-                                    "element": {
-                                      "type": "string"
-                                    },
-                                    "adaptation": {
-                                      "type": "string"
-                                    },
-                                    "priority": {
-                                      "type": "string"
-                                    }
+                                    "adaptation_type": { "type": "string" },
+                                    "description": { "type": "string" },
+                                    "priority": { "type": "string" }
                                   }
                                 }
                               },
@@ -343,67 +407,79 @@
                                 "items": {
                                   "type": "object",
                                   "properties": {
-                                    "optimization_type": {
-                                      "type": "string"
-                                    },
-                                    "description": {
-                                      "type": "string"
-                                    },
-                                    "impact": {
-                                      "type": "string"
-                                    }
+                                    "optimization_type": { "type": "string" },
+                                    "description": { "type": "string" },
+                                    "impact": { "type": "string" }
                                   }
                                 }
                               },
                               "localization_requirements": {
                                 "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "requirement": {
-                                      "type": "string"
-                                    },
-                                    "category": {
-                                      "type": "string"
-                                    }
-                                  }
-                                }
+                                "items": { "type": "string" }
                               },
                               "risk_considerations": {
                                 "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "risk": {
-                                      "type": "string"
-                                    },
-                                    "severity": {
-                                      "type": "string"
-                                    }
-                                  }
-                                }
+                                "items": { "type": "string" }
+                              },
+                              "platform_adjustments": {
+                                "type": "array",
+                                "items": { "type": "string" }
                               }
                             }
                           }
                         },
                         "global_recommendations": {
                           "type": "array",
+                          "description": "Cross-market recommendations",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "recommendation": {
-                                "type": "string"
-                              },
-                              "rationale": {
-                                "type": "string"
-                              },
-                              "priority": {
-                                "type": "string"
-                              }
+                              "recommendation": { "type": "string" },
+                              "rationale": { "type": "string" },
+                              "priority": { "type": "string" }
                             }
                           }
+                        },
+                        "implementation_priority": {
+                          "type": "array",
+                          "description": "Ranked priority for implementing adaptations",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "market": { "type": "string" },
+                              "priority_score": { "type": "integer" },
+                              "urgency": { "type": "string" }
+                            }
+                          }
+                        },
+                        "storage_location": {
+                          "type": "string",
+                          "description": "DynamoDB storage location"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "Adaptation timestamp"
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required parameters or adaptation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
                     }
                   }
                 }

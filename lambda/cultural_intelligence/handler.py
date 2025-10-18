@@ -30,6 +30,14 @@ def lambda_handler(event, context):
         function_name = event.get('function')
         parameters = event.get('parameters', {})
         
+        # Convert Bedrock parameter format (list of dicts) to dict format
+        if isinstance(parameters, list):
+            param_dict = {}
+            for param in parameters:
+                if isinstance(param, dict) and 'name' in param and 'value' in param:
+                    param_dict[param['name']] = param['value']
+            parameters = param_dict
+        
         if action_group != 'cultural-intelligence':
             return create_error_response(f"Invalid action group: {action_group}")
         
@@ -115,10 +123,14 @@ def handle_cultural_insights(parameters, context):
     """Get cultural insights from the cultural intelligence knowledge base."""
     try:
         # Extract parameters
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
         target_markets = parameters.get('target_markets', [])
         campaign_type = parameters.get('campaign_type', 'general')
         product_category = parameters.get('product_category', '')
         
+        if not product_id:
+            return create_error_response("product_id parameter is required")
         if not target_markets:
             return create_error_response("target_markets parameter is required")
         
@@ -129,10 +141,8 @@ def handle_cultural_insights(parameters, context):
         kb_id = get_knowledge_base_id()
         cultural_insights = query_knowledge_base(kb_id, query)
         
-        # Generate insights record
-        intelligence_id = str(uuid.uuid4())
-        insights_record = {
-            'intelligence_id': intelligence_id,
+        # Create cultural insights data
+        insights_data = {
             'target_markets': target_markets,
             'campaign_type': campaign_type,
             'product_category': product_category,
@@ -142,19 +152,20 @@ def handle_cultural_insights(parameters, context):
             'request_id': context.aws_request_id
         }
         
-        # Save to DynamoDB
-        table_name = get_dynamodb_table_name()
-        save_insights_to_dynamodb(table_name, insights_record)
+        # Save to products table
+        table_name = "products"  # Use the products table
+        save_cultural_insights_to_products(table_name, product_id, user_id, insights_data)
         
         # Return structured response
         return create_success_response({
-            'intelligence_id': intelligence_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'target_markets': target_markets,
             'cultural_guidelines': parse_cultural_guidelines(cultural_insights),
             'adaptation_recommendations': generate_adaptation_recommendations(cultural_insights, target_markets),
             'cultural_considerations': extract_cultural_considerations(cultural_insights),
             'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': insights_record['created_at']
+            'timestamp': insights_data['created_at']
         })
         
     except Exception as e:
@@ -165,10 +176,14 @@ def handle_market_intelligence(parameters, context):
     """Get market-specific intelligence from the market intelligence knowledge base."""
     try:
         # Extract parameters
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
         target_market = parameters.get('target_market', '')
         intelligence_type = parameters.get('intelligence_type', 'general')
         focus_areas = parameters.get('focus_areas', [])
         
+        if not product_id:
+            return create_error_response("product_id parameter is required")
         if not target_market:
             return create_error_response("target_market parameter is required")
         
@@ -180,10 +195,8 @@ def handle_market_intelligence(parameters, context):
         kb_id = get_knowledge_base_id()
         market_intelligence = query_knowledge_base(kb_id, query)
         
-        # Generate intelligence record
-        intelligence_id = str(uuid.uuid4())
-        intelligence_record = {
-            'intelligence_id': intelligence_id,
+        # Create market intelligence data
+        intelligence_data = {
             'target_market': target_market,
             'intelligence_type': intelligence_type,
             'focus_areas': focus_areas,
@@ -193,13 +206,14 @@ def handle_market_intelligence(parameters, context):
             'request_id': context.aws_request_id
         }
         
-        # Save to DynamoDB
-        table_name = get_dynamodb_table_name()
-        save_intelligence_to_dynamodb(table_name, intelligence_record)
+        # Save to products table
+        table_name = "products"
+        save_market_intelligence_to_products(table_name, product_id, user_id, intelligence_data)
         
         # Return structured response
         return create_success_response({
-            'intelligence_id': intelligence_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'target_market': target_market,
             'market_insights': parse_market_insights(market_intelligence),
             'demographic_data': extract_demographic_data(market_intelligence),
@@ -207,7 +221,7 @@ def handle_market_intelligence(parameters, context):
             'platform_preferences': extract_platform_preferences(market_intelligence),
             'seasonal_considerations': extract_seasonal_data(market_intelligence),
             'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': intelligence_record['created_at']
+            'timestamp': intelligence_data['created_at']
         })
         
     except Exception as e:
@@ -218,10 +232,14 @@ def handle_content_adaptation(parameters, context):
     """Adapt campaign content based on cultural and market intelligence."""
     try:
         # Extract parameters
+        product_id = parameters.get('product_id', '')
+        user_id = parameters.get('user_id', 'anonymous')
         content = parameters.get('content', {})
         target_markets = parameters.get('target_markets', [])
         content_type = parameters.get('content_type', 'general')
         
+        if not product_id:
+            return create_error_response("product_id parameter is required")
         if not content or not target_markets:
             return create_error_response("content and target_markets parameters are required")
         
@@ -246,10 +264,8 @@ def handle_content_adaptation(parameters, context):
                 'platform_adjustments': suggest_platform_adjustments(market_preferences)
             }
         
-        # Generate adaptation record
-        intelligence_id = str(uuid.uuid4())
-        adaptation_record = {
-            'intelligence_id': intelligence_id,
+        # Create adaptation data
+        adaptation_data = {
             'original_content': content,
             'target_markets': target_markets,
             'content_type': content_type,
@@ -258,20 +274,21 @@ def handle_content_adaptation(parameters, context):
             'request_id': context.aws_request_id
         }
         
-        # Save to DynamoDB
-        table_name = get_dynamodb_table_name()
-        save_adaptation_to_dynamodb(table_name, adaptation_record)
+        # Save to products table
+        table_name = "products"
+        save_content_adaptation_to_products(table_name, product_id, user_id, adaptation_data)
         
         # Return structured response
         return create_success_response({
-            'intelligence_id': intelligence_id,
+            'product_id': product_id,
+            'user_id': user_id,
             'original_content': content,
             'target_markets': target_markets,
             'market_adaptations': adaptations,
             'global_recommendations': generate_global_recommendations(adaptations),
             'implementation_priority': rank_adaptation_priority(adaptations),
             'storage_location': f"DynamoDB table: {table_name}",
-            'timestamp': adaptation_record['created_at']
+            'timestamp': adaptation_data['created_at']
         })
         
     except Exception as e:
@@ -555,40 +572,151 @@ def convert_floats_to_decimals(obj):
     else:
         return obj
 
-def save_insights_to_dynamodb(table_name, insights_record):
-    """Save cultural insights to DynamoDB."""
+def save_cultural_insights_to_products(table_name, product_id, user_id, insights_data):
+    """Save or update cultural insights in the products table."""
     try:
-        # Convert floats to Decimals for DynamoDB compatibility
-        insights_record = convert_floats_to_decimals(insights_record)
         table = dynamodb.Table(table_name)
-        table.put_item(Item=insights_record)
-        print(f"Saved insights record to DynamoDB: {insights_record['intelligence_id']}")
+        
+        # Convert floats to Decimals for DynamoDB compatibility
+        insights_data = convert_floats_to_decimals(insights_data)
+        
+        # Check if product record exists
+        try:
+            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+            existing_item = response.get('Item')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException':
+                # Table might not exist or wrong key structure
+                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
+            raise
+        
+        if existing_item:
+            # Update existing record with cultural insights
+            update_expression = "SET cultural_insights = :insights, updated_at = :updated_at"
+            expression_values = {
+                ':insights': insights_data,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.update_item(
+                Key={'product_id': product_id, 'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values
+            )
+            print(f"Updated cultural insights for product {product_id}")
+        else:
+            # Create new product record with cultural insights
+            new_record = {
+                'product_id': product_id,
+                'user_id': user_id,
+                'cultural_insights': insights_data,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=new_record)
+            print(f"Created new product record {product_id} with cultural insights")
+            
     except Exception as e:
-        print(f"Error saving to DynamoDB: {str(e)}")
+        print(f"Error saving cultural insights to products table: {str(e)}")
         raise
 
-def save_intelligence_to_dynamodb(table_name, intelligence_record):
-    """Save market intelligence to DynamoDB."""
+def save_market_intelligence_to_products(table_name, product_id, user_id, intelligence_data):
+    """Save or update market intelligence in the products table."""
     try:
-        # Convert floats to Decimals for DynamoDB compatibility
-        intelligence_record = convert_floats_to_decimals(intelligence_record)
         table = dynamodb.Table(table_name)
-        table.put_item(Item=intelligence_record)
-        print(f"Saved intelligence record to DynamoDB: {intelligence_record['intelligence_id']}")
+        
+        # Convert floats to Decimals for DynamoDB compatibility
+        intelligence_data = convert_floats_to_decimals(intelligence_data)
+        
+        # Check if product record exists
+        try:
+            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+            existing_item = response.get('Item')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException':
+                # Table might not exist or wrong key structure
+                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
+            raise
+        
+        if existing_item:
+            # Update existing record with market intelligence
+            update_expression = "SET market_intelligence = :intelligence, updated_at = :updated_at"
+            expression_values = {
+                ':intelligence': intelligence_data,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.update_item(
+                Key={'product_id': product_id, 'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values
+            )
+            print(f"Updated market intelligence for product {product_id}")
+        else:
+            # Create new product record with market intelligence
+            new_record = {
+                'product_id': product_id,
+                'user_id': user_id,
+                'market_intelligence': intelligence_data,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=new_record)
+            print(f"Created new product record {product_id} with market intelligence")
+            
     except Exception as e:
-        print(f"Error saving to DynamoDB: {str(e)}")
+        print(f"Error saving market intelligence to products table: {str(e)}")
         raise
 
-def save_adaptation_to_dynamodb(table_name, adaptation_record):
-    """Save content adaptation to DynamoDB."""
+def save_content_adaptation_to_products(table_name, product_id, user_id, adaptation_data):
+    """Save or update content adaptation in the products table."""
     try:
-        # Convert floats to Decimals for DynamoDB compatibility
-        adaptation_record = convert_floats_to_decimals(adaptation_record)
         table = dynamodb.Table(table_name)
-        table.put_item(Item=adaptation_record)
-        print(f"Saved adaptation record to DynamoDB: {adaptation_record['intelligence_id']}")
+        
+        # Convert floats to Decimals for DynamoDB compatibility
+        adaptation_data = convert_floats_to_decimals(adaptation_data)
+        
+        # Check if product record exists
+        try:
+            response = table.get_item(Key={'product_id': product_id, 'user_id': user_id})
+            existing_item = response.get('Item')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ValidationException':
+                # Table might not exist or wrong key structure
+                raise Exception(f"Products table validation error: {e.response['Error']['Message']}")
+            raise
+        
+        if existing_item:
+            # Update existing record with content adaptation
+            update_expression = "SET content_adaptation = :adaptation, updated_at = :updated_at"
+            expression_values = {
+                ':adaptation': adaptation_data,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.update_item(
+                Key={'product_id': product_id, 'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values
+            )
+            print(f"Updated content adaptation for product {product_id}")
+        else:
+            # Create new product record with content adaptation
+            new_record = {
+                'product_id': product_id,
+                'user_id': user_id,
+                'content_adaptation': adaptation_data,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=new_record)
+            print(f"Created new product record {product_id} with content adaptation")
+            
     except Exception as e:
-        print(f"Error saving to DynamoDB: {str(e)}")
+        print(f"Error saving content adaptation to products table: {str(e)}")
         raise
 
 def get_knowledge_base_id():

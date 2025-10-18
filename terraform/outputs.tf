@@ -42,14 +42,3 @@ output "intent_parser_function_name" {
   description = "Name of the intent parser Lambda function"
   value       = module.lambda.intent_parser_function_name
 }
-
-# Bedrock Agent outputs
-output "supervisor_agent_id" {
-  description = "ID of the supervisor Bedrock agent"
-  value       = module.bedrock.supervisor_agent_id
-}
-
-output "supervisor_agent_alias_id" {
-  description = "Alias ID of the supervisor Bedrock agent"
-  value       = module.bedrock.supervisor_agent_alias_id
-}
