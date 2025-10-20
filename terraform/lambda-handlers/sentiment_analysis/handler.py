@@ -5,6 +5,7 @@ import uuid
 import urllib.request
 import urllib.parse
 import traceback
+import re
 from datetime import datetime
 from decimal import Decimal
 from botocore.exceptions import ClientError
@@ -71,7 +72,14 @@ def handle_bedrock_agent_invocation(event, context):
 def handle_direct_invocation(event, context):
     """Handle direct Lambda invocation."""
     try:
-        # Extract parameters from event
+        # Check if competitor URLs are provided for competitor analysis
+        competitor_urls = event.get('competitor_urls') or event.get('urls') or event.get('video_urls')
+        
+        if competitor_urls:
+            print("Detected competitor URLs - routing to competitor analysis")
+            return handle_competitor_url_analysis(event, context)
+        
+        # Extract parameters from event for regular search-based analysis
         search_query = event.get('search_query')
         product_name = event.get('product_name')
         analysis_type = event.get('analysis_type', 'comprehensive')
@@ -1031,3 +1039,296 @@ def create_bedrock_error_response(error_message, api_path='unknown'):
             }
         }
     }
+
+# New methods for competitor URL analysis (do not modify existing code above)
+
+def extract_competitor_urls_from_payload(payload):
+    """
+    Extract competitor URLs from the payload.
+    
+    Args:
+        payload: Dictionary containing competitor URLs
+        
+    Returns:
+        List of competitor URLs
+    """
+    try:
+        competitor_urls = []
+        
+        # Check various possible keys where URLs might be stored
+        if 'competitor_urls' in payload:
+            competitor_urls = payload['competitor_urls']
+        elif 'urls' in payload:
+            competitor_urls = payload['urls']
+        elif 'video_urls' in payload:
+            competitor_urls = payload['video_urls']
+        
+        # Ensure it's a list
+        if not isinstance(competitor_urls, list):
+            competitor_urls = [competitor_urls] if competitor_urls else []
+        
+        # Filter out empty URLs
+        competitor_urls = [url for url in competitor_urls if url and isinstance(url, str)]
+        
+        print(f"Extracted {len(competitor_urls)} competitor URLs from payload")
+        return competitor_urls
+        
+    except Exception as e:
+        print(f"Error extracting competitor URLs: {str(e)}")
+        return []
+
+def extract_video_id_from_url(url):
+    """
+    Extract YouTube video ID from various YouTube URL formats.
+    
+    Args:
+        url: YouTube URL
+        
+    Returns:
+        Video ID string or None if not found
+    """
+    try:
+        import re
+        
+        # YouTube URL patterns
+        patterns = [
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+            r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})',
+            r'youtu\.be\/([a-zA-Z0-9_-]{11})'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                video_id = match.group(1)
+                print(f"Extracted video ID '{video_id}' from URL: {url}")
+                return video_id
+        
+        print(f"Could not extract video ID from URL: {url}")
+        return None
+        
+    except Exception as e:
+        print(f"Error extracting video ID from URL {url}: {str(e)}")
+        return None
+
+def fetch_youtube_video_data(video_id):
+    """
+    Fetch YouTube video data using video ID.
+    This is a placeholder - in production, you would use YouTube Data API.
+    
+    Args:
+        video_id: YouTube video ID
+        
+    Returns:
+        Dictionary with video data
+    """
+    try:
+        # Simulated video data structure (replace with actual YouTube API call)
+        video_data = {
+            'video_id': video_id,
+            'title': f'Sample Video Title for {video_id}',
+            'description': f'Sample description for video {video_id}. This would contain actual video description with product mentions, reviews, and user opinions.',
+            'channel_title': 'Sample Channel',
+            'published_at': '2025-01-01T00:00:00Z',
+            'view_count': 10000,
+            'like_count': 500,
+            'comment_count': 50,
+            'comments': [
+                f'Great review of this product! Video ID: {video_id}',
+                f'I love this product, much better than competitors',
+                f'Not impressed with the quality, expected better',
+                f'Amazing features, definitely worth the price',
+                f'Good value for money, would recommend'
+            ]
+        }
+        
+        print(f"Fetched data for video ID: {video_id}")
+        return video_data
+        
+    except Exception as e:
+        print(f"Error fetching video data for {video_id}: {str(e)}")
+        return None
+
+def fetch_competitor_data_from_urls(competitor_urls):
+    """
+    Fetch data from competitor URLs (primarily YouTube videos).
+    
+    Args:
+        competitor_urls: List of competitor URLs
+        
+    Returns:
+        List of content data from competitor URLs
+    """
+    try:
+        competitor_data = []
+        
+        for url in competitor_urls:
+            try:
+                # Extract video ID if it's a YouTube URL
+                video_id = extract_video_id_from_url(url)
+                
+                if video_id:
+                    # Fetch video data
+                    video_data = fetch_youtube_video_data(video_id)
+                    if video_data:
+                        # Format data for sentiment analysis
+                        content_item = {
+                            'source': 'youtube',
+                            'url': url,
+                            'video_id': video_id,
+                            'title': video_data.get('title', ''),
+                            'description': video_data.get('description', ''),
+                            'content': f"{video_data.get('title', '')} {video_data.get('description', '')}",
+                            'comments': video_data.get('comments', []),
+                            'engagement': {
+                                'views': video_data.get('view_count', 0),
+                                'likes': video_data.get('like_count', 0),
+                                'comments': video_data.get('comment_count', 0)
+                            },
+                            'channel': video_data.get('channel_title', ''),
+                            'published_at': video_data.get('published_at', '')
+                        }
+                        competitor_data.append(content_item)
+                else:
+                    # Handle non-YouTube URLs (placeholder)
+                    print(f"Non-YouTube URL detected: {url} - skipping for now")
+                    
+            except Exception as e:
+                print(f"Error processing URL {url}: {str(e)}")
+                continue
+        
+        print(f"Successfully fetched data from {len(competitor_data)} competitor URLs")
+        return competitor_data
+        
+    except Exception as e:
+        print(f"Error fetching competitor data: {str(e)}")
+        return []
+
+def analyze_competitor_sentiment(competitor_data, product_name):
+    """
+    Analyze sentiment from competitor data and generate insights.
+    
+    Args:
+        competitor_data: List of content data from competitors
+        product_name: Name of the product for context
+        
+    Returns:
+        Dictionary with sentiment analysis and action items
+    """
+    try:
+        print(f"Analyzing sentiment for {len(competitor_data)} competitor content items")
+        
+        # Combine all content for analysis
+        all_content = []
+        all_comments = []
+        
+        for item in competitor_data:
+            # Add main content (title + description)
+            if item.get('content'):
+                all_content.append({
+                    'text': item['content'],
+                    'source': f"{item.get('source', 'unknown')} - {item.get('title', 'untitled')}",
+                    'engagement': item.get('engagement', {})
+                })
+            
+            # Add comments
+            comments = item.get('comments', [])
+            for comment in comments:
+                all_comments.append({
+                    'text': comment,
+                    'source': f"Comment on {item.get('title', 'video')}",
+                    'engagement': {}
+                })
+        
+        # Combine content and comments
+        content_for_analysis = all_content + all_comments
+        
+        if not content_for_analysis:
+            return {
+                'sentiment_analysis': {},
+                'action_items': [],
+                'metadata': {'error': 'No content found for analysis'}
+            }
+        
+        # Analyze sentiment using existing function
+        sentiment_results = analyze_sentiment_with_comprehend(content_for_analysis)
+        
+        # Aggregate results using existing function
+        aggregated_sentiment = aggregate_sentiment_results(sentiment_results, product_name)
+        
+        # Generate action items using existing function
+        action_items_text = generate_action_items_with_bedrock(aggregated_sentiment)
+        
+        # Structure action items using existing function
+        structured_action_items = structure_action_items(action_items_text, aggregated_sentiment)
+        
+        # Extract insights using existing function
+        key_insights = extract_key_insights(aggregated_sentiment, structured_action_items)
+        
+        result = {
+            'sentiment_analysis': {
+                'overall_sentiment': aggregated_sentiment.get('overall_sentiment', 'NEUTRAL'),
+                'sentiment_scores': aggregated_sentiment.get('sentiment_distribution', {}),
+                'content_analyzed': len(content_for_analysis),
+                'competitor_sources': len(competitor_data),
+                'key_insights': key_insights
+            },
+            'action_items': structured_action_items,
+            'metadata': {
+                'analysis_type': 'competitor_analysis',
+                'product_name': product_name,
+                'sources_analyzed': [item.get('url', 'unknown') for item in competitor_data],
+                'content_items': len(content_for_analysis),
+                'competitor_count': len(competitor_data)
+            }
+        }
+        
+        print(f"Completed competitor sentiment analysis for {product_name}")
+        return result
+        
+    except Exception as e:
+        print(f"Error analyzing competitor sentiment: {str(e)}")
+        return {
+            'sentiment_analysis': {},
+            'action_items': [],
+            'metadata': {'error': str(e)}
+        }
+
+def handle_competitor_url_analysis(parameters, context):
+    """
+    Handle sentiment analysis specifically for competitor URLs.
+    This is the main entry point for competitor URL analysis.
+    
+    Args:
+        parameters: Dictionary containing competitor URLs and product info
+        context: Lambda context
+        
+    Returns:
+        Dictionary with analysis results
+    """
+    try:
+        print("Starting competitor URL analysis")
+        
+        # Extract competitor URLs from parameters
+        competitor_urls = extract_competitor_urls_from_payload(parameters)
+        
+        if not competitor_urls:
+            return create_error_response("No competitor URLs found in payload")
+        
+        # Get product name for context
+        product_name = parameters.get('product_name', 'Unknown Product')
+        
+        # Fetch data from competitor URLs
+        competitor_data = fetch_competitor_data_from_urls(competitor_urls)
+        
+        if not competitor_data:
+            return create_error_response("No data could be fetched from competitor URLs")
+        
+        # Analyze sentiment and generate insights
+        analysis_result = analyze_competitor_sentiment(competitor_data, product_name)
+        
+        return create_success_response(analysis_result)
+        
+    except Exception as e:
+        print(f"Error in competitor URL analysis: {str(e)}")
+        return create_error_response(f"Competitor analysis failed: {str(e)}")
