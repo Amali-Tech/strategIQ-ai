@@ -1,4 +1,4 @@
-# YouTube-Enriched Marketing Campaign Generator
+# StrategIQ Marketing Campaign Generator
 
 > **AI-driven, serverless pipeline that converts product images into fully enriched, trend-informed marketing campaigns using AWS, YouTube Data API, and Amazon Bedrock.**
 
@@ -13,7 +13,7 @@
 
 ## Project Overview
 
-This project implements an automated, event-driven marketing campaign generation system. It ingests product images, extracts rich visual and contextual attributes, enriches them with real-time YouTube trend intelligence, and generates multi-channel marketing campaign assets using generative AI models hosted on Amazon Bedrock.
+This project implements an automated, event-driven marketing campaign generation system. It ingests product images, extracts rich visual and contextual attributes, enriches them with real-time Social Media trend intelligence, and generates multi-channel marketing campaign assets using generative AI models hosted on Amazon Bedrock.
 
 **Core Value Proposition**:
 - Eliminate manual research steps
