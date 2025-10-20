@@ -2,6 +2,7 @@ import json
 import boto3
 import os
 import uuid
+import traceback
 from datetime import datetime
 from botocore.exceptions import ClientError
 
@@ -43,6 +44,23 @@ def lambda_handler(event, context):
         if not isinstance(request_body, dict):
             return create_error_response("Invalid request format: expected JSON object")
         
+        # Detect if this is optimize-campaign endpoint
+        is_optimize_campaign = False
+        path_sources = [
+            event.get('pathParameters', {}).get('proxy', '') if event.get('pathParameters') else '',
+            event.get('resource', ''),
+            event.get('rawPath', ''),
+            event.get('requestContext', {}).get('http', {}).get('path', ''),
+            event.get('routeKey', '')
+        ]
+        
+        for path_source in path_sources:
+            if path_source and 'optimize-campaign' in path_source:
+                is_optimize_campaign = True
+                break
+        
+        print(f"Is optimize-campaign endpoint: {is_optimize_campaign}")
+        
         product_info = request_body.get('product_info', {})
         s3_info = request_body.get('s3_info', {})
         target_markets = request_body.get('target_markets', {})
@@ -67,14 +85,38 @@ def lambda_handler(event, context):
         
         if agent_result.get('success'):
             print("TIER 1 SUCCESS: Bedrock agent generated campaign")
+            
+            # Conditionally invoke sentiment analysis for optimize-campaign
+            sentiment_analysis_result = None
+            if is_optimize_campaign:
+                print("Invoking sentiment analysis for optimize-campaign endpoint")
+                competitor_urls = request_body.get('competitor_urls', [])
+                if competitor_urls:
+                    sentiment_analysis_result = invoke_sentiment_analysis(product_info, competitor_urls)
+                else:
+                    print("No competitor URLs provided for sentiment analysis")
+            
+            response_data = {
+                'success': True,
+                'correlation_id': correlation_id,
+                'generation_method': 'bedrock_agent_with_tools',
+                'campaign': agent_result.get('campaign')
+            }
+            
+            # Include sentiment analysis if available and not empty
+            if sentiment_analysis_result and (
+                sentiment_analysis_result.get('sentiment_analysis') or 
+                sentiment_analysis_result.get('action_items') or 
+                sentiment_analysis_result.get('metadata', {}).get('content_analyzed')
+            ):
+                print(f"TIER 1: Adding sentiment analysis to response: {sentiment_analysis_result}")
+                response_data['sentiment_analysis'] = sentiment_analysis_result
+            else:
+                print(f"TIER 1: Sentiment analysis result is empty or None: {sentiment_analysis_result}")
+            
             return {
                 'statusCode': 200,
-                'body': json.dumps({
-                    'success': True,
-                    'correlation_id': correlation_id,
-                    'generation_method': 'bedrock_agent_with_tools',
-                    'campaign': agent_result.get('campaign')
-                })
+                'body': json.dumps(response_data)
             }
         
         # TIER 1 FAILED - Log and proceed to TIER 2
@@ -118,32 +160,81 @@ def lambda_handler(event, context):
         
         if agent_synthesis_result.get('success'):
             print("TIER 2 SUCCESS: Bedrock synthesized campaign from aggregated data")
+            
+            # Conditionally invoke sentiment analysis for optimize-campaign
+            sentiment_analysis_result = None
+            if is_optimize_campaign:
+                print("Invoking sentiment analysis for optimize-campaign endpoint")
+                competitor_urls = request_body.get('competitor_urls', [])
+                if competitor_urls:
+                    sentiment_analysis_result = invoke_sentiment_analysis(product_info, competitor_urls)
+                else:
+                    print("No competitor URLs provided for sentiment analysis")
+            
+            response_data = {
+                'success': True,
+                'correlation_id': correlation_id,
+                'generation_method': 'fail_safe_orchestration_with_synthesis',
+                'product_id': product_id,
+                'campaign': agent_synthesis_result.get('campaign')
+            }
+            
+            # Include sentiment analysis if available and not empty
+            if sentiment_analysis_result and (
+                sentiment_analysis_result.get('sentiment_analysis') or 
+                sentiment_analysis_result.get('action_items') or 
+                sentiment_analysis_result.get('metadata', {}).get('content_analyzed')
+            ):
+                print(f"TIER 2: Adding sentiment analysis to response: {sentiment_analysis_result}")
+                response_data['sentiment_analysis'] = sentiment_analysis_result
+            else:
+                print(f"TIER 2: Sentiment analysis result is empty or None: {sentiment_analysis_result}")
+            
             return {
                 'statusCode': 200,
-                'body': json.dumps({
-                    'success': True,
-                    'correlation_id': correlation_id,
-                    'generation_method': 'fail_safe_orchestration_with_synthesis',
-                    'product_id': product_id,
-                    'campaign': agent_synthesis_result.get('campaign')
-                })
+                'body': json.dumps(response_data)
             }
         
         # If synthesis also fails, return aggregated data as-is
         print("TIER 2 WARNING: Bedrock synthesis also failed, returning aggregated data")
+        
+        # Conditionally invoke sentiment analysis for optimize-campaign even in fallback
+        sentiment_analysis_result = None
+        if is_optimize_campaign:
+            print("Invoking sentiment analysis for optimize-campaign endpoint (fallback path)")
+            competitor_urls = request_body.get('competitor_urls', [])
+            if competitor_urls:
+                sentiment_analysis_result = invoke_sentiment_analysis(product_info, competitor_urls)
+            else:
+                print("No competitor URLs provided for sentiment analysis")
+        
         # Convert Decimals before JSON serialization
         clean_aggregated = convert_decimals(aggregated_record)
         clean_objectives = convert_decimals(campaign_objectives)
+        
+        response_data = {
+            'success': True,
+            'correlation_id': correlation_id,
+            'generation_method': 'fail_safe_aggregated_data_only',
+            'product_id': product_id,
+            'campaign': create_fallback_campaign(clean_aggregated, clean_objectives),
+            'warning': 'Campaign generated from aggregated data only, Bedrock synthesis unavailable'
+        }
+        
+        # Include sentiment analysis if available and not empty
+        if sentiment_analysis_result and (
+            sentiment_analysis_result.get('sentiment_analysis') or 
+            sentiment_analysis_result.get('action_items') or 
+            sentiment_analysis_result.get('metadata', {}).get('content_analyzed')
+        ):
+            print(f"FALLBACK: Adding sentiment analysis to response: {sentiment_analysis_result}")
+            response_data['sentiment_analysis'] = sentiment_analysis_result
+        else:
+            print(f"FALLBACK: Sentiment analysis result is empty or None: {sentiment_analysis_result}")
+        
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'success': True,
-                'correlation_id': correlation_id,
-                'generation_method': 'fail_safe_aggregated_data_only',
-                'product_id': product_id,
-                'campaign': create_fallback_campaign(clean_aggregated, clean_objectives),
-                'warning': 'Campaign generated from aggregated data only, Bedrock synthesis unavailable'
-            })
+            'body': json.dumps(response_data)
         }
         
     except Exception as e:
@@ -423,9 +514,9 @@ def convert_decimals(obj):
 
 def synthesize_with_bedrock(product_id, aggregated_record, campaign_objectives, correlation_id):
     """
-    Invoke Claude 3 Haiku model directly to synthesize campaign from aggregated data.
+    Invoke Amazon Nova Pro model directly to synthesize campaign from aggregated data.
     
-    Uses Bedrock InvokeModel API (not agent) with Claude 3 Haiku for cost-effective synthesis.
+    Uses Bedrock InvokeModel API (not agent) with Amazon Nova Pro for cost-effective synthesis.
     
     Returns:
         Dict with 'success' and 'campaign' keys
@@ -467,7 +558,7 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
   "product": {{
     "description": "<product name and description, 20-500 chars>",
     "image": {{
-      "public_url": "https://product-images-bucket-v2.s3.amazonaws.com/{s3_key}",
+      "public_url": "https://degenerals-mi-dev-images.s3.eu-west-1.amazonaws.com/{s3_key}",
       "s3_key": "{s3_key}",
       "labels": {json.dumps([label.get('name', label) if isinstance(label, dict) else label for label in image_labels[:10]], indent=2)}
     }}
@@ -478,7 +569,8 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
       "topic": "<content topic, 10-200 chars>",
       "engagement_score": <0-100>,
       "caption": "<engaging caption, 20-500 chars>",
-      "hashtags": ["#tag1", "#tag2", "#tag3"]
+      "hashtags": ["#tag1", "#tag2", "#tag3"],
+      "week": <campaign week>
     }}
   ],
   "campaigns": [
@@ -547,24 +639,17 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
   }},
   "recommendations": [
     {{
-      "type": "timing",
-      "title": "Optimal Posting Times",
-      "description": "Post between 6-9 PM for maximum engagement"
-    }},
-    {{
-      "type": "content",
-      "title": "Video Content Focus",
-      "description": "Prioritize short-form video content for higher engagement rates"
-    }},
-    {{
-      "type": "platform",
-      "title": "Platform Strategy",
-      "description": "Focus on Instagram Reels and TikTok for viral potential"
+      "type": "<timing, content, platform>",
+      "title": "<title, eg. Optimal Posting Times>",
+      "description": "<description - eg. Post between 6-9 PM for maximum engagement>"
     }}
   ]
 }}
 
 CRITICAL REQUIREMENTS:
+- the content belongs to a capaign, the campaign-to-content map should follow logically
+- so if a campaign has weeks, the content should have week associations (eg. a content idea should fit within the context of a campaign calendar)
+- also be creative with the content ideas, eg -> a banana man wearing your product sitting by the beach staring into the sunset
 - You MUST include EXACTLY all the fields shown above, with the same names and nesting
 - Include 2-5 content_ideas with different platforms
 - All hashtags must start with # and be 1-30 chars
@@ -682,7 +767,10 @@ def create_fallback_campaign(aggregated_record, campaign_objectives):
     """
     Create a fallback campaign structure from aggregated data.
     
-    This is used if agent synthesis fails, to ensure we return some campaign data.
+    This is used if agent synthesis fails, to ensure we return some campaign data
+    for testing and developing the front-end and the ui.
+
+    Should not be pushed to production
     """
     try:
         # Ensure aggregated_record is a dict
@@ -876,3 +964,99 @@ def create_fallback_campaign(aggregated_record, campaign_objectives):
             'analytics': {},
             'recommendations': []
         }
+
+def invoke_sentiment_analysis(product_info, competitor_urls):
+    """
+    Invoke sentiment analysis Lambda for competitor analysis based on product information
+    """
+    try:
+        print(f"Invoking sentiment analysis for product: {product_info.get('name', 'Unknown')}")
+        print(f"With {len(competitor_urls)} competitor URLs for context")
+        
+        # Create search query based on product information
+        product_name = product_info.get('name', '')
+        product_category = product_info.get('category', '')
+        key_features = product_info.get('key_features', [])
+        
+        # Build comprehensive search query
+        search_terms = [product_name]
+        if product_category:
+            search_terms.append(product_category)
+        if key_features:
+            search_terms.extend(key_features[:3])  # Add top 3 features
+        
+        search_query = " ".join(search_terms) + " reviews feedback opinions"
+        
+        print(f"Search query: {search_query}")
+        
+        # Prepare payload for sentiment analysis Lambda
+        payload = {
+            "search_query": search_query,
+            "product_name": product_name,
+            "analysis_type": "comprehensive",
+            "competitor_urls": competitor_urls,
+            "product_info": product_info
+        }
+        
+        # Invoke sentiment analysis Lambda
+        response = lambda_client.invoke(
+            FunctionName=os.environ.get('SENTIMENT_ANALYSIS_FUNCTION_NAME', 'sentiment-analysis-lambda'),
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        # Parse response
+        response_payload = json.loads(response['Payload'].read())
+        print(f"Sentiment analysis Lambda response status: {response.get('StatusCode')}")
+        print(f"Sentiment analysis Lambda full response: {response_payload}")
+        
+        if response.get('StatusCode') == 200 and 'body' in response_payload:
+            body = json.loads(response_payload['body']) if isinstance(response_payload['body'], str) else response_payload['body']
+            
+            if body.get('success'):
+                data = body.get('data', {})
+                return {
+                    'sentiment_analysis': data.get('sentiment_analysis', data.get('sentiment_summary', {})),
+                    'action_items': data.get('action_items', data.get('generated_insights', [])),
+                    'metadata': {
+                        'analysis_id': data.get('analysis_id'),
+                        'competitor_urls': competitor_urls,
+                        'search_query': search_query,
+                        'content_analyzed': data.get('content_analyzed', 0),
+                        'product_name': product_name
+                    }
+                }
+            else:
+                print(f"Sentiment analysis returned success=false: {body}")
+                return {
+                    'sentiment_analysis': {},
+                    'action_items': [],
+                    'metadata': {'error': body.get('error', 'Unknown error from sentiment analysis')}
+                }
+        else:
+            print(f"Sentiment analysis Lambda returned error: {response_payload}")
+            return {
+                'sentiment_analysis': {},
+                'action_items': [],
+                'metadata': {'error': 'Failed to analyze competitors'}
+            }
+            
+    except Exception as e:
+        print(f"Error invoking sentiment analysis: {str(e)}")
+        return {
+            'sentiment_analysis': {},
+            'action_items': [],
+            'metadata': {'error': str(e)}
+        }
+
+def create_error_response(error_message):
+    """
+    Create a standardized error response for API Gateway
+    """
+    return {
+        'statusCode': 400,
+        'body': json.dumps({
+            'success': False,
+            'error': error_message
+        })
+    }
