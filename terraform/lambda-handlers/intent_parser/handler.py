@@ -496,7 +496,9 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
       "adaptations": {{
         "<platform>": "<platform-specific strategy>",
         "<platform>": "<platform-specific strategy>"
-      }}
+      }},
+      "estimated_reach": "<estimated audience reach>",
+      "engagement_score": "<0-100>"
     }}
   ],
   "generated_assets": {{
@@ -513,12 +515,13 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
     "email_templates": [
       {{
         "subject": "<email subject>",
-        "body": "<email body content>"
+        "body": "<email body content - min 100 words>"
       }}
     ],
     "blog_outlines": [
       {{
         "title": "<blog post title>",
+        "introduction": "<blog post introduction - min 100 words>",
         "points": ["<point 1>", "<point 2>", "<point 3>"]
       }}
     ]
@@ -532,7 +535,33 @@ Return ONLY valid JSON matching this EXACT schema without any deviation:
     "trending_content_types": ["<type 1>", "<type 2>"],
     "cultural_considerations": ["<consideration 1>"],
     "audience_preferences": ["<preference 1>", "<preference 2>"]
-  }}
+  }},
+  "analytics": {{
+    "estimatedReach": "<estimatedReach>",
+    "reachChange": "<+/-reachChange>",
+    "engagementChange": "<+/-engagementChange>",
+    "conversionRate": <conversionRate>,
+    "estimatedViews": "<estimatedViews>",
+    "projectedShares": "<projectedShares>",
+    "newFollowers": "<newFollowers>"
+  }},
+  "recommendations": [
+    {{
+      "type": "timing",
+      "title": "Optimal Posting Times",
+      "description": "Post between 6-9 PM for maximum engagement"
+    }},
+    {{
+      "type": "content",
+      "title": "Video Content Focus",
+      "description": "Prioritize short-form video content for higher engagement rates"
+    }},
+    {{
+      "type": "platform",
+      "title": "Platform Strategy",
+      "description": "Focus on Instagram Reels and TikTok for viral potential"
+    }}
+  ]
 }}
 
 CRITICAL REQUIREMENTS:
@@ -549,12 +578,9 @@ CRITICAL REQUIREMENTS:
 Return ONLY the JSON object, no additional text or markdown."""
 
         print(f"Invoking Amazon Nova Pro model for campaign synthesis")
-        
-        # Create Bedrock runtime client for model invocation
         bedrock_client = boto3.client('bedrock-runtime')
         
-        # Invoke Amazon Nova Pro model directly using inference profile ARN
-        # Nova uses a different request format than Claude
+        # Invoke Amazon Nova Pro model
         response = bedrock_client.invoke_model(
             modelId='arn:aws:bedrock:eu-west-1::inference-profile/eu.amazon.nova-pro-v1:0',
             contentType='application/json',
@@ -567,17 +593,19 @@ Return ONLY the JSON object, no additional text or markdown."""
                     }
                 ],
                 'inferenceConfig': {
-                    'maxTokens': 2048
+                    'maxTokens': 4096
                 }
             })
         )
         
         # Parse the response
         response_body = json.loads(response['body'].read())
+        print(f"Bedrock model response status: {response_body}")
         # Amazon Nova Pro response format: response_body['output']['message']['content'][0]['text']
         model_response_text = response_body['output']['message']['content'][0]['text']
         
         print(f"Amazon Nova Pro response length: {len(model_response_text)} chars")
+        # print(f"Model response preview: {model_response_text}")
         
         # Try to extract JSON campaign from response
         campaign = extract_campaign_json(model_response_text)
@@ -639,241 +667,212 @@ def extract_campaign_json(response_text):
                          'related_youtube_videos', 'platform_recommendations', 'market_insights']
         if all(key in data for key in required_keys):
             return data
-    except:
-        pass
-    
-    # Try to find JSON object in text
-    import re
-    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group())
-            # Check if it's a valid campaign according to our schema requirements
-            required_keys = ['product', 'content_ideas', 'campaigns', 'generated_assets',
-                            'related_youtube_videos', 'platform_recommendations', 'market_insights']
-            if all(key in data for key in required_keys):
-                return data
-        except:
-            pass
-    
-    return None
-
-
-def is_valid_campaign(obj):
-    """Check if object looks like a valid campaign according to schema."""
-    if not isinstance(obj, dict):
-        return False
-    
-    # Required keys based on our schema
-    required_keys = ['product', 'content_ideas', 'campaigns', 'generated_assets',
-                     'related_youtube_videos', 'platform_recommendations', 'market_insights']
-    return all(key in obj for key in required_keys)
+        else:
+            print("Extracted JSON does not contain all required keys")
+            return None
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Error extracting campaign JSON: {str(e)}")
+        return None
 
 
 def create_fallback_campaign(aggregated_record, campaign_objectives):
-    """Create a basic campaign structure from aggregated data matching exact schema from instructions."""
-    product_name = aggregated_record.get('product_name', 'Product')
-    product_description = aggregated_record.get('product_description', f'{product_name} - innovative product')
-    image_labels = aggregated_record.get('image_labels', [])
-    product_category = aggregated_record.get('product_category', 'General')
-    s3_key = aggregated_record.get('s3_key', aggregated_record.get('image_key', 'unknown'))
-    youtube_videos = aggregated_record.get('youtube_videos', [])
+    """
+    Create a fallback campaign structure from aggregated data.
     
-    # Convert labels to simple string array
-    label_strings = []
-    if isinstance(image_labels, list):
-        for label in image_labels[:10]:
-            if isinstance(label, dict) and 'name' in label:
-                label_strings.append(label['name'])
-            elif isinstance(label, str):
-                label_strings.append(label)
-    
-    # If no labels, add some generic ones based on product category
-    if not label_strings:
-        label_strings = [product_category, 'Quality', 'Innovation']
+    This is used if agent synthesis fails, to ensure we return some campaign data.
+    """
+    try:
+        # Ensure aggregated_record is a dict
+        if not isinstance(aggregated_record, dict):
+            print(f"Warning: aggregated_record is not a dict, got {type(aggregated_record)}")
+            aggregated_record = {}
         
-    # Ensure we have YouTube videos that match schema
-    formatted_videos = []
-    if youtube_videos and isinstance(youtube_videos, list):
-        for video in youtube_videos[:5]:
-            if isinstance(video, dict):
-                video_entry = {
-                    "title": video.get('title', f"{product_name} Related Video"),
-                    "channel": video.get('channel', "Product Review Channel"),
-                    "url": video.get('url', f"https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-                    "views": video.get('views', 10000)
+        # Ensure campaign_objectives is a dict or list
+        if not isinstance(campaign_objectives, (dict, list)):
+            print(f"Warning: campaign_objectives is not a dict/list, got {type(campaign_objectives)}")
+            campaign_objectives = {}
+        
+        # Convert Decimals
+        clean_record = convert_decimals(aggregated_record)
+        clean_objectives = convert_decimals(campaign_objectives)
+        
+        # Get product details
+        product_name = clean_record.get('product_name', 'Unknown Product')
+        product_description = clean_record.get('product_description', f'{product_name} - innovative product')
+        image_labels = clean_record.get('image_labels', [])
+        s3_key = clean_record.get('s3_key', clean_record.get('image_key', 'unknown'))
+        youtube_videos = clean_record.get('youtube_videos', [])
+        
+        # Basic structure with product info and objectives
+        fallback_campaign = {
+            'product': {
+                'description': f"{product_name} - {product_description[:200]}",
+                'image': {
+                    'public_url': f"https://product-images-bucket-v2.s3.amazonaws.com/{s3_key}",
+                    's3_key': s3_key,
+                    'labels': image_labels[:10] if isinstance(image_labels, list) else []
                 }
-                formatted_videos.append(video_entry)
-    
-    # If no videos, create placeholder videos
-    if not formatted_videos:
-        formatted_videos = [
-            {
-                "title": f"{product_name} Review & Features",
-                "channel": "ProductReviews",
-                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                "views": 15000
             },
-            {
-                "title": f"Unboxing the New {product_name}",
-                "channel": "TechUnboxing",
-                "url": "https://www.youtube.com/watch?v=xvFZjo5PgG0",
-                "views": 8500
-            }
-        ]
-    
-    return {
-        'product': {
-            'description': f"{product_name} - {product_description[:200]}",
-            'image': {
-                'public_url': f"https://product-images-bucket-v2.s3.amazonaws.com/{s3_key}",
-                's3_key': s3_key,
-                'labels': label_strings
-            }
-        },
-        'content_ideas': [
+            'content_ideas': [],
+            'campaigns': [],
+            'generated_assets': {
+                'image_prompts': [
+                    f'A sleek {product_name} displayed in a modern, well-lit setting showcasing its key features',
+                    f'Lifestyle image showing {product_name} in use with happy customers'
+                ],
+                'video_scripts': [
+                    {
+                        'type': 'Short form video',
+                        'content': f'Quick tour of {product_name} features and benefits'
+                    }
+                ],
+                'email_templates': [
+                    {
+                        'subject': f'Discover {product_name}',
+                        'body': f'Introducing {product_name} - the solution you\'ve been waiting for.'
+                    }
+                ],
+                'blog_outlines': [
+                    {
+                        'title': f'Why {product_name} is a Game Changer',
+                        'points': ['Introduction', 'Key Features', 'Customer Benefits', 'Conclusion']
+                    }
+                ]
+            },
+            'related_youtube_videos': [],
+            'platform_recommendations': {
+                'primary_platforms': ['Instagram', 'TikTok', 'YouTube'],
+                'rationale': 'Selected based on target audience demographics and engagement patterns'
+            },
+            'market_insights': {
+                'trending_content_types': ['Unboxing videos', 'User testimonials', 'Tutorial content'],
+                'cultural_considerations': ['Emphasize quality and innovation'],
+                'audience_preferences': ['Authentic content', 'Short-form video', 'Interactive posts']
+            },
+            'analytics': {
+                'estimatedReach': 75000,
+                'reachChange': '+12%',
+                'engagementChange': '+8.5%',
+                'conversionRate': 3.2,
+                'estimatedViews': 250000,
+                'projectedShares': 12500,
+                'newFollowers': 3200
+            },
+            'recommendations': [
+                {
+                    'type': 'timing',
+                    'title': 'Optimal Posting Times',
+                    'description': 'Post between 6-9 PM for maximum engagement'
+                },
+                {
+                    'type': 'content',
+                    'title': 'Video Content Focus',
+                    'description': 'Prioritize short-form video content for higher engagement rates'
+                },
+                {
+                    'type': 'platform',
+                    'title': 'Platform Strategy',
+                    'description': 'Focus on Instagram Reels and TikTok for viral potential'
+                }
+            ]
+        }
+        
+        # Format related_youtube_videos with all required fields
+        if isinstance(youtube_videos, list):
+            for video in youtube_videos[:5]:
+                if isinstance(video, dict):
+                    fallback_campaign['related_youtube_videos'].append({
+                        'title': video.get('title', 'Untitled Video'),
+                        'channelTitle': video.get('channel', video.get('channelTitle', 'Product Review Channel')),
+                        'thumbnailUrl': video.get('thumbnailUrl', video.get('thumbnail', 'https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg')),
+                        'viewCount': video.get('views', video.get('viewCount', 10000)),
+                        'likeCount': video.get('likeCount', 850),
+                        'commentCount': video.get('commentCount', 120),
+                        'url': video.get('url', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+                    })
+        
+        # Add default content ideas
+        fallback_campaign['content_ideas'] = [
             {
                 'platform': 'Instagram',
                 'topic': f'Showcase {product_name} lifestyle integration',
                 'engagement_score': 75,
-                'caption': f'Discover the innovation behind {product_name}. Experience quality that transforms your daily routine.',
-                'hashtags': ['#Innovation', '#Quality', f'#{product_category}', '#Lifestyle', '#Premium']
+                'caption': f'Discover the innovation behind {product_name}. Transform your daily routine.',
+                'hashtags': ['#Innovation', '#Quality', '#Lifestyle', '#Premium']
             },
             {
                 'platform': 'TikTok',
                 'topic': f'{product_name} unboxing and first impressions',
                 'engagement_score': 85,
-                'caption': f'Unboxing {product_name} - you won\'t believe what\'s inside! 🔥',
-                'hashtags': ['#Unboxing', f'#{product_category}', '#Review', '#MustHave']
+                'caption': f'Unboxing {product_name} - you won\'t believe this! 🔥',
+                'hashtags': ['#Unboxing', '#Review', '#MustHave', '#Trending']
             },
             {
                 'platform': 'YouTube',
                 'topic': f'Complete {product_name} review and demonstration',
                 'engagement_score': 80,
-                'caption': f'In-depth review of {product_name}. Is it worth it? Watch to find out!',
-                'hashtags': ['#ProductReview', f'#{product_category}', '#HonestReview', '#TechReview']
+                'caption': f'In-depth review of {product_name}. Is it worth it?',
+                'hashtags': ['#ProductReview', '#HonestReview', '#TechReview']
             }
-        ],
-        'campaigns': [
+        ]
+        
+        # Add campaigns with estimated_reach and engagement_score
+        fallback_campaign['campaigns'] = [
             {
-                'name': f'{product_name} Viral Marketing Campaign',
-                'duration': campaign_objectives.get('campaign_duration', '30 days'),
+                'name': f'{product_name} Launch Campaign',
+                'duration': '4 weeks',
                 'posts_per_week': 3,
                 'platforms': ['Instagram', 'TikTok', 'YouTube'],
                 'calendar': {
-                    'Week 1': f'Introduce the campaign with stunning visuals and tips for {product_name} usage',
-                    'Week 2': 'Share user-generated content and customer testimonials',
-                    'Week 3': 'Focus on product features and benefits with detailed content',
-                    'Week 4': 'Wrap up with contests and calls-to-action for engagement'
+                    'Week 1': 'Teaser content and product reveals',
+                    'Week 2': 'Influencer collaborations and reviews',
+                    'Week 3': 'User-generated content showcase',
+                    'Week 4': 'Special offers and call-to-action'
                 },
                 'adaptations': {
-                    'Instagram': 'Use high-quality images and short videos showcasing product features',
-                    'TikTok': 'Create short, engaging videos with trending music and quick tips',
-                    'YouTube': 'Post comprehensive reviews and tutorials for in-depth content'
-                }
+                    'Instagram': 'Focus on high-quality images and Reels',
+                    'TikTok': 'Create trending sound-based content',
+                    'YouTube': 'Detailed product reviews and tutorials'
+                },
+                'estimated_reach': '75K-150K',
+                'engagement_score': 85
             },
             {
-                'name': f'{product_name} Community Building Initiative',
-                'duration': '45 days',
+                'name': 'Social Proof Campaign',
+                'duration': '2 weeks',
                 'posts_per_week': 2,
-                'platforms': ['Instagram', 'Facebook', 'LinkedIn'],
+                'platforms': ['Facebook', 'Instagram', 'LinkedIn'],
                 'calendar': {
-                    'Week 1': 'Launch community challenges and engagement activities',
-                    'Week 2': 'Share customer stories and success cases',
-                    'Week 3': 'Host Q&A sessions and expert interviews',
-                    'Week 4': 'Run contests and giveaways to boost participation',
-                    'Week 5': 'Analyze results and plan follow-up activities',
-                    'Week 6': 'Celebrate community achievements and announce winners'
+                    'Week 1': 'Customer testimonials and success stories',
+                    'Week 2': 'Expert endorsements and awards'
                 },
                 'adaptations': {
-                    'Instagram': 'Focus on Stories, Reels, and community polls',
-                    'Facebook': 'Create groups and events for community interaction',
-                    'LinkedIn': 'Share professional insights and industry connections'
-                }
+                    'Facebook': 'Community engagement and discussion groups',
+                    'Instagram': 'Story highlights with customer reviews',
+                    'LinkedIn': 'Professional use cases and ROI stories'
+                },
+                'estimated_reach': '30K-60K',
+                'engagement_score': 78
             }
-        ],
-        'generated_assets': {
-            'image_prompts': [
-                f'A sleek {product_name} displayed in a modern, well-lit setting showcasing its key features and premium quality',
-                f'Action shot of {product_name} in use, highlighting performance and user experience',
-                f'Lifestyle image showing {product_name} integrated into daily life with happy, satisfied users'
-            ],
-            'video_scripts': [
-                {
-                    'type': 'Short form video',
-                    'content': f'Quick tour of {product_name} features! From unboxing to first use, see why this is a game-changer. Perfect for social media highlights.'
-                },
-                {
-                    'type': 'Long form video',
-                    'content': f'In-depth review of {product_name}: We break down every feature, test performance, and share real user experiences. Complete guide for potential buyers.'
-                }
-            ],
-            'email_templates': [
-                {
-                    'subject': f'Discover the Power of {product_name}',
-                    'body': f'Hello [Name],\n\nWe\'re excited to introduce you to {product_name}, the innovative solution you\'ve been waiting for. Experience [key benefit] and transform your [use case].\n\nLearn more: [link]\n\nBest regards,\nThe {product_name} Team'
-                },
-                {
-                    'subject': f'Your {product_name} Success Story',
-                    'body': f'Hi [Name],\n\nThank you for choosing {product_name}! Here are some tips to get the most out of your purchase and join our community of satisfied users.\n\n[Personalized tips based on usage]\n\nShare your experience: [link]\n\nHappy exploring!\nThe {product_name} Team'
-                }
-            ],
-            'blog_outlines': [
-                {
-                    'title': f'Why {product_name} is Revolutionizing {product_category}',
-                    'points': [
-                        f'Introduction to {product_name} and its unique value proposition',
-                        'Key features that set it apart from competitors',
-                        'Real-world applications and use cases',
-                        'Customer testimonials and success stories',
-                        'Future developments and roadmap'
-                    ]
-                },
-                {
-                    'title': f'Getting Started with {product_name}: A Complete Guide',
-                    'points': [
-                        'Unboxing and initial setup process',
-                        'Essential features and how to use them',
-                        'Tips and tricks for optimal performance',
-                        'Common questions and troubleshooting',
-                        'Resources for further learning and support'
-                    ]
-                }
-            ]
-        },
-        'related_youtube_videos': formatted_videos,
-        'platform_recommendations': {
-            'primary_platforms': ['Instagram', 'TikTok', 'YouTube'],
-            'rationale': f'Selected platforms based on target audience demographics and {product_category} category performance. Instagram for visual storytelling, TikTok for viral potential, and YouTube for detailed product demonstrations.'
-        },
-        'market_insights': {
-            'trending_content_types': [
-                'Unboxing videos',
-                'User testimonials',
-                'Behind-the-scenes content',
-                'Tutorial and how-to content'
-            ],
-            'cultural_considerations': [
-                'Emphasize quality and innovation for global markets',
-                'Adapt messaging for regional preferences',
-                'Use inclusive and authentic representation'
-            ],
-            'audience_preferences': [
-                'Authentic, non-promotional content',
-                'Influencer partnerships and UGC',
-                'Short-form video content',
-                'Interactive and educational content'
-            ]
+        ]
+        
+        return fallback_campaign
+    
+    except Exception as e:
+        print(f"Error creating fallback campaign: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            'product': {'description': 'Unknown Product', 'image': {'public_url': '', 's3_key': '', 'labels': []}},
+            'content_ideas': [],
+            'campaigns': [],
+            'generated_assets': {},
+            'related_youtube_videos': [],
+            'platform_recommendations': {'primary_platforms': [], 'rationale': ''},
+            'market_insights': {'trending_content_types': [], 'cultural_considerations': [], 'audience_preferences': []},
+            'analytics': {},
+            'recommendations': []
         }
-    }
-
-
-def create_error_response(error_message):
-    """Create an error response."""
-    return {
-        'statusCode': 400,
-        'body': json.dumps({
-            'success': False,
-            'error': error_message
-        })
-    }

@@ -128,8 +128,7 @@ def generate_image_with_nova_canvas(prompt, style='natural', aspect_ratio='1:1')
                 'quality': 'standard',
                 'width': 1024 if aspect_ratio == '1:1' else 1280,
                 'height': 1024 if aspect_ratio == '1:1' else (720 if aspect_ratio == '16:9' else 1280),
-                'cfgScale': 7.0,
-                'seed': None  # Random seed for variety
+                'cfgScale': 7.0
             }
         }
 
@@ -237,13 +236,19 @@ def store_generation_metadata(request_id, user_id, prompt, s3_key, style, aspect
 
         table = dynamodb.Table(table_name)
 
-        # Store metadata
+
+        # Get bucket name from environment (same as used in store_image_in_s3)
+        bucket_name = os.environ.get('S3_BUCKET_NAME', 'degenerals-mi-dev-images')
+        s3_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+
+        # Store metadata with both key and URL
         table.put_item(
             Item={
                 'request_id': request_id,
                 'user_id': user_id,
                 'prompt': prompt,
                 's3_key': s3_key,
+                's3_url': s3_url,
                 'style': style,
                 'aspect_ratio': aspect_ratio,
                 'generated_at': datetime.now().isoformat(),
